@@ -194,9 +194,9 @@ Reservation-history checks remain scheduled for P2-03.
 
 **Depends on:** P1-03, P1-05, P1-11. **Area:** Events controller/service/Zod schemas, application exception filter, and admin workshop forms.
 
-- [ ] Define the event-management API contract and implement complete required drafts, ordinary edits, publication, capacity, deadlines, fixed WIB input, and shared organizer contact display. Add the small Zod pipe and safe application error handling with these real endpoints.
-- [ ] Apply the event-lock protocol from the first capacity/deadline implementation. Significant draft schedule/venue edits require a reason and immutable before/after revision history. Reject significant published-event edits until P3-03 implements their complete mutation/history/notification operation; ordinary published edits remain available within their rules.
-- [ ] Verify invalid fields/unknown server-owned input, start/end/deadline checks, admin-only access, capacity below seeded confirmed counts, nonblank reasons, revision consistency, and ordinary JSON parsing alongside Better Auth.
+- [X] Define the event-management API contract and implement complete required drafts, ordinary edits, publication, capacity, deadlines, fixed WIB input, and shared organizer contact display. Add the small Zod pipe and safe application error handling with these real endpoints.
+- [X] Apply the event-lock protocol from the first capacity/deadline implementation. Significant draft schedule/venue edits require a reason and immutable before/after revision history. Reject significant published-event edits until P3-03 implements their complete mutation/history/notification operation; ordinary published edits remain available within their rules.
+- [X] Verify invalid fields/unknown server-owned input, start/end/deadline checks, admin-only access, capacity below seeded confirmed counts, nonblank reasons, revision consistency, and ordinary JSON parsing alongside Better Auth.
 
 **Done when:** An admin can publish a valid workshop through the UI, and application errors are useful without exposing ORM errors or secrets.
 
@@ -204,9 +204,11 @@ Reservation-history checks remain scheduled for P2-03.
 
 **Depends on:** P1-03, P1-12. **Area:** Public event list/detail API and React pages.
 
-- [ ] Implement upcoming published events, title search, WIB date filtering in URL parameters, and event details with schedule, venue/address, availability, deadlines, policy, and contact email.
-- [ ] Handle available/full/registration-closed/cancelled conditions and loading/empty/error states. Protect drafts from anonymous discovery; keep cancelled details clear to an attendee following an existing event link.
+- [X] Implement upcoming published events, title search, WIB date filtering in URL parameters, and event details with schedule, venue/address, availability, deadlines, policy, and contact email.
+- [X] Handle available/full/registration-closed/cancelled conditions and loading/empty/error states. Protect drafts from anonymous discovery; keep cancelled details clear to an attendee following an existing event link.
 - [ ] Verify title filtering, WIB day boundaries from a differently configured browser timezone, draft visibility, and availability/deadline labels using controlled records.
+
+Manual browser verification is pending because browser automation is unavailable.
 
 **Done when:** A visitor can find and understand a workshop without signing in. The API remains authoritative for subsequent booking.
 

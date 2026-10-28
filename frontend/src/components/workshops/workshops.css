@@ -1,0 +1,159 @@
+.public-workshops {
+  max-width: 68rem;
+  margin: 2rem auto;
+  padding: 0 1rem 3rem;
+  color: #18212b;
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.public-workshops h1 {
+  margin: 1.5rem 0 0.5rem;
+  font-size: 2rem;
+}
+.public-workshops h2 {
+  margin: 2rem 0 0.5rem;
+  font-size: 1.25rem;
+}
+.public-workshops p,
+.workshop-description {
+  max-width: 72ch;
+}
+.public-workshops a {
+  color: #174e89;
+  text-underline-offset: 0.2em;
+}
+.public-workshops a:hover {
+  text-decoration-thickness: 2px;
+}
+.public-workshops :focus-visible {
+  outline: 3px solid #174e89;
+  outline-offset: 3px;
+}
+.public-workshops ::selection {
+  background: #d9e9fc;
+}
+.discovery-filters {
+  display: flex;
+  gap: 1.25rem;
+  align-items: start;
+  flex-wrap: wrap;
+  padding: 1.5rem 0;
+  border-bottom: 1px solid #c5ced7;
+}
+.discovery-filters > div:first-child {
+  flex: 2 1 16rem;
+}
+.discovery-filters > div:nth-child(2),
+.discovery-filters > div:nth-child(3) {
+  flex: 1 1 11rem;
+}
+.discovery-filters label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}
+.discovery-filters input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  font: inherit;
+  color: inherit;
+  padding: 0.65rem;
+  border: 1px solid #7d8995;
+  border-radius: 0.25rem;
+  background: white;
+  caret-color: #174e89;
+}
+.discovery-filters span {
+  display: block;
+  margin-top: 0.4rem;
+  font-size: 0.9rem;
+}
+.discovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-self: center;
+}
+.public-workshops button {
+  font: inherit;
+  min-height: 2.75rem;
+  padding: 0.6rem 1rem;
+  border: 1px solid #174e89;
+  border-radius: 0.25rem;
+  color: white;
+  background: #174e89;
+  cursor: pointer;
+}
+.public-workshops button:hover {
+  background: #103a66;
+}
+.public-workshops button[type='button'] {
+  background: white;
+  color: #174e89;
+}
+.public-workshops button[type='button']:hover {
+  background: #edf4fc;
+}
+.discovery-list {
+  list-style: none;
+  padding: 0;
+  margin: 1.5rem 0;
+}
+.discovery-list li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1rem 2rem;
+  padding: 1.5rem 0;
+  border-bottom: 1px solid #c5ced7;
+}
+.discovery-list li > div:first-child {
+  flex: 2 1 22rem;
+  min-width: 0;
+}
+.discovery-list h2 {
+  margin: 0 0 0.6rem;
+}
+.discovery-list p {
+  margin: 0.4rem 0;
+}
+.discovery-capacity {
+  flex: 1 1 13rem;
+  font-variant-numeric: tabular-nums;
+}
+.workshop-availability {
+  font-weight: 650;
+}
+.workshop-availability[data-state='AVAILABLE'] {
+  color: #176139;
+}
+.workshop-availability[data-state='CANCELLED'] {
+  color: #9c2020;
+}
+.workshop-description {
+  white-space: pre-wrap;
+}
+.workshop-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem 2rem;
+  margin: 1rem 0 2.5rem;
+}
+.workshop-facts dt {
+  font-weight: 650;
+  margin-bottom: 0.35rem;
+}
+.workshop-facts dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 40rem) {
+  .workshop-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .public-workshops h1 {
+    font-size: 1.7rem;
+  }
+}

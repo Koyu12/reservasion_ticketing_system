@@ -1,0 +1,140 @@
+.workshops {
+  color: #18212b;
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+  max-width: 68rem;
+  margin: 2rem auto;
+  padding: 0 1rem 3rem;
+  overflow-wrap: anywhere;
+}
+.workshops h1 {
+  margin: 1.5rem 0 0.5rem;
+  font-size: 2rem;
+}
+.workshops h2 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+.workshops p {
+  max-width: 72ch;
+}
+.workshops a {
+  color: #174e89;
+  text-underline-offset: 0.2em;
+}
+.workshops :focus-visible {
+  outline: 3px solid #174e89;
+  outline-offset: 3px;
+}
+.workshops ::selection {
+  background: #d9e9fc;
+}
+.workshop-heading,
+.workshop-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+.workshop-list {
+  list-style: none;
+  padding: 0;
+  margin: 2rem 0;
+}
+.workshop-list li {
+  padding: 1.25rem 0;
+  border-top: 1px solid #c5ced7;
+  font-variant-numeric: tabular-nums;
+}
+.workshop-list p {
+  margin: 0.4rem 0;
+}
+.workshops fieldset {
+  border: 0;
+  padding: 0;
+  margin: 2rem 0 0;
+  min-width: 0;
+}
+.workshops legend {
+  font-size: 1.25rem;
+  font-weight: 650;
+}
+.workshop-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+.workshop-wide {
+  grid-column: 1 / -1;
+}
+.workshops label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}
+.workshops input,
+.workshops textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  color: inherit;
+  background: #fff;
+  padding: 0.65rem;
+  border: 1px solid #7d8995;
+  border-radius: 0.25rem;
+  caret-color: #174e89;
+}
+.workshops textarea {
+  resize: vertical;
+}
+.workshops button {
+  font: inherit;
+  min-height: 2.75rem;
+  padding: 0.6rem 1.1rem;
+  border: 1px solid #174e89;
+  border-radius: 0.25rem;
+  color: #fff;
+  background: #174e89;
+  cursor: pointer;
+}
+.workshops button:hover:not(:disabled) {
+  background: #103a66;
+}
+.workshops button:disabled {
+  cursor: default;
+  color: #475563;
+  border-color: #c5ced7;
+  background: #e6ebf0;
+}
+.workshops input:disabled,
+.workshops textarea:disabled {
+  color: #475563;
+  background: #edf0f3;
+}
+.workshop-error {
+  color: #9c2020;
+}
+.workshop-error:focus {
+  outline: 2px solid #9c2020;
+  outline-offset: 0.5rem;
+}
+.workshop-reason {
+  margin-top: 1.5rem;
+}
+.workshop-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+@media (max-width: 40rem) {
+  .workshop-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .workshops h1 {
+    font-size: 1.7rem;
+  }
+}

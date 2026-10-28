@@ -7,6 +7,10 @@ import { VerifyEmail } from './components/VerifyEmail'
 import { ForgotPassword } from './components/ForgotPassword'
 import { ResetPassword } from './components/ResetPassword'
 import { RequireAdmin } from './components/RequireAdmin'
+import { WorkshopList } from './components/admin/WorkshopList'
+import { WorkshopEditor } from './components/admin/WorkshopEditor'
+import { WorkshopDiscovery } from './components/workshops/WorkshopDiscovery'
+import { WorkshopDetails } from './components/workshops/WorkshopDetails'
 
 export default function App() {
   const {
@@ -78,11 +82,11 @@ export default function App() {
       <main>
         <Routes>
           <Route path="/" element={<Navigate to="/events" replace />} />
-          <Route path="/events" element={<h1>Workshops</h1>} />
+          <Route path="/events" element={<WorkshopDiscovery />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
-          <Route path="/events/:id" element={<h1>Workshop details</h1>} />
+          <Route path="/events/:id" element={<WorkshopDetails />} />
           <Route
             path="/login"
             element={<AuthForm key="login" mode="login" />}
@@ -96,7 +100,23 @@ export default function App() {
             path="/admin/events"
             element={
               <RequireAdmin>
-                <h1>Manage workshops</h1>
+                <WorkshopList />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/admin/events/new"
+            element={
+              <RequireAdmin>
+                <WorkshopEditor key="new" />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/admin/events/:id"
+            element={
+              <RequireAdmin>
+                <WorkshopEditor key="edit" />
               </RequireAdmin>
             }
           />
