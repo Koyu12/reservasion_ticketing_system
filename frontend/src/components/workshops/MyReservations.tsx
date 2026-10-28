@@ -126,6 +126,11 @@ function ReservationList({
               </Link>
             </h3>
             <p className="workshop-availability">{status}</p>
+            {event.status === 'CANCELLED' && (
+              <p className="workshop-description">
+                Workshop cancellation reason: {event.cancellationReason}
+              </p>
+            )}
             <p>
               <time dateTime={event.startsAt}>{formatWib(event.startsAt)}</time>{' '}
               to <time dateTime={event.endsAt}>{formatWib(event.endsAt)}</time>

@@ -8,7 +8,9 @@ import {
 import { z } from 'zod';
 import { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import type {
+  CancelEventInput,
   CreateEventInput,
   PublicEventQuery,
   UpdateEventInput,
@@ -68,6 +70,9 @@ const editorSelect = {
   capacity: true,
   status: true,
   scheduleRevision: true,
+  cancelledAt: true,
+  cancelledById: true,
+  cancellationReason: true,
   createdAt: true,
   updatedAt: true,
   _count: { select: { reservationn: { where: { status: 'CONFIRMED' } } } },
@@ -101,7 +106,10 @@ function validateSchedule(event: CreateEventInput) {
 
 @Injectable()
 export class EventsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async listPublic(query: PublicEventQuery) {
     const organizerContactEmail = this.contactEmail();
@@ -143,7 +151,13 @@ export class EventsService {
     const organizerContactEmail = this.contactEmail();
     const event = await this.prisma.event.findFirst({
       where: { id, status: { in: ['PUBLISHED', 'CANCELLED'] } },
-      select: { ...publicSelect, description: true, venueAddress: true },
+      select: {
+        ...publicSelect,
+        description: true,
+        venueAddress: true,
+        cancelledAt: true,
+        cancellationReason: true,
+      },
     });
     if (!event) throw new NotFoundException('Workshop not found.');
     return {
@@ -151,6 +165,8 @@ export class EventsService {
         ...presentPublic(event, Date.now()),
         description: event.description,
         venueAddress: event.venueAddress,
+        cancelledAt: event.cancelledAt,
+        cancellationReason: event.cancellationReason,
         cancellationClosesAt: new Date(event.startsAt.getTime() - 86400000),
       },
       organizerContactEmail,
@@ -220,10 +236,6 @@ export class EventsService {
           current.endsAt.getTime() !== next.endsAt.getTime() ||
           current.venueName !== next.venueName ||
           current.venueAddress !== next.venueAddress;
-        if (significant && current.status === 'PUBLISHED')
-          throw new ConflictException(
-            'Published schedule and venue changes are not available yet.',
-          );
         if (significant && !reason)
           throw new BadRequestException({
             code: 'VALIDATION_ERROR',
@@ -245,7 +257,7 @@ export class EventsService {
             `Capacity cannot be below the ${confirmedCount} confirmed reservations.`,
           );
         if (significant) {
-          await tx.eventChange.create({
+          const change = await tx.eventChange.create({
             data: {
               eventId: id,
               revision: current.scheduleRevision + 1,
@@ -259,8 +271,22 @@ export class EventsService {
               newVenueAddress: next.venueAddress,
               changedById: actorId,
               reason: reason!,
+              createdAt: new Date(now),
             },
           });
+          if (current.status === 'PUBLISHED') {
+            const reservations = await tx.reservation.findMany({
+              where: { eventId: id, status: 'CONFIRMED' },
+              select: { id: true },
+            });
+            for (const reservation of reservations) {
+              await this.notifications.enqueue(tx, {
+                type: 'EVENT_CHANGED',
+                reservationId: reservation.id,
+                eventChangeId: change.id,
+              });
+            }
+          }
         }
         return tx.event.update({
           where: { id },
@@ -272,6 +298,68 @@ export class EventsService {
           },
           select: editorSelect,
         });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
+    );
+    return { event: present(event), organizerContactEmail };
+  }
+
+  async cancel(id: string, input: CancelEventInput, actorId: string) {
+    const organizerContactEmail = this.contactEmail();
+    const reason = input.reason.trim();
+    if (!reason)
+      throw new BadRequestException('A cancellation reason is required.');
+    const event = await this.prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "Event" WHERE "id" = ${id}::uuid FOR UPDATE`;
+        const current = await tx.event.findUnique({
+          where: { id },
+          select: editorSelect,
+        });
+        if (!current) throw new NotFoundException('Workshop not found.');
+        if (current.status === 'CANCELLED') return current;
+        if (current.status !== 'PUBLISHED')
+          throw new ConflictException({
+            code: 'EVENT_NOT_PUBLISHED',
+            message: 'Only published workshops can be cancelled.',
+          });
+        const now = new Date(Date.now());
+        if (now >= current.endsAt)
+          throw new ConflictException({
+            code: 'EVENT_ENDED',
+            message: 'This workshop has ended and can no longer be cancelled.',
+          });
+        const reservations = await tx.reservation.findMany({
+          where: { eventId: id, status: 'CONFIRMED' },
+          select: { id: true },
+        });
+        await tx.reservation.updateMany({
+          where: { eventId: id, status: 'CONFIRMED' },
+          data: {
+            status: 'CANCELLED',
+            cancelledAt: now,
+            cancelledById: actorId,
+            cancellationSource: 'EVENT_CANCELLED',
+            cancellationReason: reason,
+          },
+        });
+        const cancelled = await tx.event.update({
+          where: { id },
+          data: {
+            status: 'CANCELLED',
+            cancelledAt: now,
+            cancelledById: actorId,
+            cancellationReason: reason,
+          },
+          select: editorSelect,
+        });
+        for (const reservation of reservations) {
+          await this.notifications.enqueue(tx, {
+            type: 'EVENT_CANCELLED',
+            reservationId: reservation.id,
+          });
+        }
+        return cancelled;
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
     );

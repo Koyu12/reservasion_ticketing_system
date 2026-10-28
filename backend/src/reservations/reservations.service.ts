@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { Prisma } from '../generated/prisma/client.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { adminCancelReservationSchema } from './reservations.schemas.js';
 
 const bookingSelect = {
   id: true,
@@ -18,6 +19,14 @@ const bookingSelect = {
   bookingReference: true,
   status: true,
   createdAt: true,
+} satisfies Prisma.ReservationSelect;
+
+const adminCancellationSelect = {
+  ...bookingSelect,
+  cancelledAt: true,
+  cancelledById: true,
+  cancellationSource: true,
+  cancellationReason: true,
 } satisfies Prisma.ReservationSelect;
 
 const detailSelect = {
@@ -35,6 +44,8 @@ const detailSelect = {
       venueAddress: true,
       registrationClosesAt: true,
       scheduleRevision: true,
+      cancelledAt: true,
+      cancellationReason: true,
     },
   },
 } satisfies Prisma.ReservationSelect;
@@ -214,6 +225,75 @@ export class ReservationsService {
             cancellationReason: null,
           },
           select,
+        });
+        await this.notifications.enqueue(tx, {
+          type: 'RESERVATION_CANCELLED',
+          reservationId: id,
+        });
+        return cancelled;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
+    );
+    return { reservation };
+  }
+
+  async listForEvent(eventId: string) {
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        startsAt: true,
+        endsAt: true,
+        capacity: true,
+        reservationn: {
+          select: {
+            ...adminCancellationSelect,
+            attendee: { select: { name: true, email: true } },
+            cancelledBy: { select: { id: true, name: true } },
+          },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        },
+      },
+    });
+    if (!event) throw new NotFoundException('Workshop not found.');
+    const { reservationn: reservations, ...details } = event;
+    const confirmed = reservations.filter((row) => row.status === 'CONFIRMED');
+    return {
+      event: details,
+      confirmedCount: confirmed.length,
+      confirmed,
+      cancelled: reservations.filter((row) => row.status === 'CANCELLED'),
+    };
+  }
+
+  async cancelAsAdmin(id: string, actorId: string, reason: string) {
+    const input = adminCancelReservationSchema.parse({ reason });
+    const existing = await this.prisma.reservation.findUnique({
+      where: { id },
+      select: { eventId: true },
+    });
+    if (!existing) throw new NotFoundException('Reservation not found.');
+    const reservation = await this.prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "Event" WHERE "id" = ${existing.eventId}::uuid FOR UPDATE`;
+        const current = await tx.reservation.findUnique({
+          where: { id },
+          select: adminCancellationSelect,
+        });
+        if (!current) throw new NotFoundException('Reservation not found.');
+        if (current.status === 'CANCELLED') return current;
+        const cancelled = await tx.reservation.update({
+          where: { id },
+          data: {
+            status: 'CANCELLED',
+            cancelledAt: new Date(Date.now()),
+            cancelledById: actorId,
+            cancellationSource: 'ADMIN',
+            cancellationReason: input.reason,
+          },
+          select: adminCancellationSelect,
         });
         await this.notifications.enqueue(tx, {
           type: 'RESERVATION_CANCELLED',

@@ -124,6 +124,27 @@
 .workshop-reason {
   margin-top: 1.5rem;
 }
+.workshop-cancellation {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #c5ced7;
+}
+.workshops .workshop-description {
+  white-space: pre-wrap;
+}
+.attendee-list h3 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+.attendee-cancellation {
+  flex-basis: 100%;
+}
+.attendee-cancellation fieldset {
+  margin-top: 0.5rem;
+}
+.attendee-reason {
+  white-space: pre-wrap;
+}
 .workshop-actions {
   display: flex;
   flex-wrap: wrap;

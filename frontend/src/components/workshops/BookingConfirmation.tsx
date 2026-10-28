@@ -107,7 +107,21 @@ export function BookingConfirmation() {
       </div>
       <h2>{event.title}</h2>
       {event.status === 'CANCELLED' && (
-        <p role="status">This workshop has been cancelled.</p>
+        <div>
+          <p role="status">This workshop has been cancelled.</p>
+          {event.cancelledAt && (
+            <p>
+              Workshop cancelled on{' '}
+              <time dateTime={event.cancelledAt}>
+                {formatWib(event.cancelledAt)}
+              </time>
+              .
+            </p>
+          )}
+          <p className="workshop-description">
+            Reason: {event.cancellationReason}
+          </p>
+        </div>
       )}
       {reservation.affectedByChange && (
         <p role="status">
@@ -235,6 +249,7 @@ function CancellationAction({
     onSettled: async () => {
       setConfirming(false)
       await Promise.all([
+        client.invalidateQueries({ queryKey: ['admin-attendees'] }),
         client.invalidateQueries({
           queryKey: ['reservation', userId, reservation.id],
         }),

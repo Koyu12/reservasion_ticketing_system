@@ -27,6 +27,13 @@ export const updateEventSchema = eventFieldsSchema
   });
 
 export const eventIdSchema = z.uuid();
+export const cancelEventSchema = z.strictObject({
+  reason: z
+    .string()
+    .trim()
+    .min(1, 'Explain why this workshop is being cancelled.'),
+});
+export type CancelEventInput = z.infer<typeof cancelEventSchema>;
 export const emptyObjectSchema = z.strictObject({});
 export const publicEventQuerySchema = z
   .strictObject({

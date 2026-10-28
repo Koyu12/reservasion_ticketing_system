@@ -200,6 +200,22 @@ describe('Reservations (PostgreSQL)', () => {
       .set('Cookie', identity.cookie)
       .send(body);
   }
+  function adminCancel(
+    id: string,
+    body: unknown = { reason: 'Attendee contacted organizer' },
+    identity = admin,
+  ) {
+    return request(app.getHttpServer())
+      .post(`/api/admin/reservations/${id}/cancel`)
+      .set('Origin', origin)
+      .set('Cookie', identity.cookie)
+      .send(body);
+  }
+  function attendees(eventId = event.id, identity = admin) {
+    return request(app.getHttpServer())
+      .get(`/api/admin/events/${eventId}/reservations`)
+      .set('Cookie', identity.cookie);
+  }
   async function expectCounts(reservations: number, jobs = reservations) {
     expect(
       await prisma.reservation.count({ where: { eventId: event.id } }),
@@ -210,6 +226,242 @@ describe('Reservations (PostgreSQL)', () => {
       }),
     ).toBe(jobs);
   }
+
+  it('protects admin attendee reads and cancellation with current admin permission and origin checks', async () => {
+    const { reservation } = (await book().expect(201)).body as BookingResponse;
+    await request(app.getHttpServer())
+      .get(`/api/admin/events/${event.id}/reservations`)
+      .expect(401);
+    await request(app.getHttpServer())
+      .post(`/api/admin/reservations/${reservation.id}/cancel`)
+      .set('Origin', origin)
+      .send({ reason: 'Request' })
+      .expect(401);
+    await attendees(event.id, attendee).expect(403);
+    await adminCancel(reservation.id, { reason: 'Request' }, attendee).expect(
+      403,
+    );
+    for (const requestOrigin of [undefined, 'https://untrusted.example']) {
+      const pending = request(app.getHttpServer())
+        .post(`/api/admin/reservations/${reservation.id}/cancel`)
+        .set('Cookie', admin.cookie)
+        .send({ reason: 'Request' });
+      if (requestOrigin) pending.set('Origin', requestOrigin);
+      await pending.expect(403);
+    }
+    await prisma.user.update({
+      where: { id: admin.id },
+      data: { role: 'ATTENDEE' },
+    });
+    try {
+      await attendees().expect(403);
+      await adminCancel(reservation.id).expect(403);
+    } finally {
+      await prisma.user.update({
+        where: { id: admin.id },
+        data: { role: 'ADMIN' },
+      });
+    }
+    await expectCounts(1);
+  });
+
+  it('validates admin cancellation reasons, identifiers and server-owned fields', async () => {
+    const { reservation } = (await book().expect(201)).body as BookingResponse;
+    for (const body of [
+      {},
+      { reason: '' },
+      { reason: '  ' },
+      { reason: 3 },
+      { reason: 'Request', cancelledById: attendee.id },
+      { reason: 'Request', cancellationSource: 'SELF_SERVICE' },
+      { reason: 'Request', cancelledAt: new Date().toISOString() },
+      { reason: 'Request', status: 'CANCELLED' },
+      { reason: 'Request', userId: attendee.id },
+    ]) {
+      await adminCancel(reservation.id, body).expect(400);
+    }
+    await adminCancel('invalid').expect(400);
+    await adminCancel(randomUUID()).expect(404);
+    await attendees('invalid').expect(400);
+    await attendees(randomUUID()).expect(404);
+    await attendees().query({ userId: attendee.id }).expect(400);
+    await expectCounts(1);
+  });
+
+  it('lists only the selected workshop with confirmed bookings and cancellation audit history', async () => {
+    expect((await attendees().expect(200)).body).toMatchObject({
+      confirmedCount: 0,
+      confirmed: [],
+      cancelled: [],
+    });
+    const first = ((await book().expect(201)).body as BookingResponse)
+      .reservation;
+    await adminCancel(first.id, { reason: '  Requested by email  ' }).expect(
+      200,
+    );
+    const second = ((await book().expect(201)).body as BookingResponse)
+      .reservation;
+    const anotherEvent = await seedEvent();
+    await book(other, { eventId: anotherEvent.id }).expect(201);
+    const response = await attendees().expect(200);
+    expect(response.body).toMatchObject({
+      event: { id: event.id, title: event.title, capacity: 1 },
+      confirmedCount: 1,
+      confirmed: [
+        {
+          id: second.id,
+          attendee: { email: attendee.email },
+          cancellationSource: null,
+        },
+      ],
+      cancelled: [
+        {
+          id: first.id,
+          cancelledById: admin.id,
+          cancelledBy: { id: admin.id },
+          cancellationSource: 'ADMIN',
+          cancellationReason: 'Requested by email',
+        },
+      ],
+    });
+    expect(
+      Object.keys(
+        (response.body as { confirmed: Record<string, unknown>[] })
+          .confirmed[0],
+      ).sort(),
+    ).toEqual(
+      [
+        'id',
+        'eventId',
+        'bookingReference',
+        'status',
+        'createdAt',
+        'cancelledAt',
+        'cancelledById',
+        'cancelledBy',
+        'cancellationSource',
+        'cancellationReason',
+        'attendee',
+      ].sort(),
+    );
+    expect((await list(admin).expect(200)).body).toMatchObject({
+      current: [],
+      history: [],
+    });
+  });
+
+  it.each(['late', 'during', 'ended'] as const)(
+    'allows admin cancellation for a %s request and records the real actor and time',
+    async (when) => {
+      const { reservation } = (await book().expect(201))
+        .body as BookingResponse;
+      const now =
+        when === 'late'
+          ? event.startsAt.getTime() - 1
+          : when === 'during'
+            ? event.startsAt.getTime()
+            : event.endsAt.getTime() + 1;
+      jest.spyOn(Date, 'now').mockReturnValue(now);
+      await cancel(reservation.id).expect(409);
+      const response = await adminCancel(reservation.id).expect(200);
+      expect(response.body).toMatchObject({
+        reservation: {
+          ...reservation,
+          status: 'CANCELLED',
+          cancelledById: admin.id,
+          cancelledAt: new Date(now).toISOString(),
+          cancellationSource: 'ADMIN',
+        },
+      });
+      expect(
+        await prisma.emailJob.findUnique({
+          where: {
+            deduplicationKey: `RESERVATION_CANCELLED:${reservation.id}`,
+          },
+        }),
+      ).toMatchObject({ status: 'PENDING', recipientEmail: attendee.email });
+      await book(other).expect(409);
+      await expectCounts(1, 2);
+    },
+  );
+
+  it('rechecks admin cancellation after the event lock and preserves the first concurrent cancellation', async () => {
+    const { reservation } = (await book().expect(201)).body as BookingResponse;
+    const now = event.endsAt.getTime() + 1;
+    await whileEventLocked(
+      () => adminCancel(reservation.id).expect(200),
+      () => {
+        jest.spyOn(Date, 'now').mockReturnValue(now);
+      },
+    );
+    const original = await prisma.reservation.findUniqueOrThrow({
+      where: { id: reservation.id },
+    });
+    expect(original.cancelledAt).toEqual(new Date(now));
+    await Promise.all([
+      adminCancel(reservation.id, { reason: 'Replace reason' }).expect(200),
+      cancel(reservation.id).expect(200),
+    ]);
+    expect(
+      await prisma.reservation.findUniqueOrThrow({
+        where: { id: reservation.id },
+      }),
+    ).toEqual(original);
+    await expectCounts(1, 2);
+  });
+
+  it('serializes competing admin and attendee cancellations without replacing earlier history', async () => {
+    const { reservation } = (await book().expect(201)).body as BookingResponse;
+    await Promise.all([
+      adminCancel(reservation.id).expect(200),
+      cancel(reservation.id).expect(200),
+    ]);
+    const original = await prisma.reservation.findUniqueOrThrow({
+      where: { id: reservation.id },
+    });
+    expect(['ADMIN', 'SELF_SERVICE']).toContain(original.cancellationSource);
+    expect(original.cancelledById).toBe(
+      original.cancellationSource === 'ADMIN' ? admin.id : attendee.id,
+    );
+    await adminCancel(reservation.id, { reason: 'Do not overwrite' }).expect(
+      200,
+    );
+    expect(
+      await prisma.reservation.findUniqueOrThrow({
+        where: { id: reservation.id },
+      }),
+    ).toEqual(original);
+    await expectCounts(1, 2);
+  });
+
+  it('rolls back admin cancellation and the queued notice together', async () => {
+    const { reservation } = (await book().expect(201)).body as BookingResponse;
+    const original = await prisma.reservation.findUniqueOrThrow({
+      where: { id: reservation.id },
+    });
+    const enqueue = new NotificationsService();
+    jest
+      .spyOn(notifications, 'enqueue')
+      .mockImplementationOnce(async (tx, input) => {
+        await enqueue.enqueue(tx, input);
+        throw new Error('secret-admin-cancellation');
+      });
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const response = await adminCancel(reservation.id).expect(500);
+    expect(JSON.stringify(response.body)).not.toContain(
+      'secret-admin-cancellation',
+    );
+    expect(
+      await prisma.reservation.findUniqueOrThrow({
+        where: { id: reservation.id },
+      }),
+    ).toEqual(original);
+    await expectCounts(1);
+    await adminCancel(reservation.id).expect(200);
+    const results = await Promise.all([book(attendee), book(other)]);
+    expect(results.map((result) => result.status).sort()).toEqual([201, 409]);
+    await expectCounts(2, 3);
+  });
 
   it('books with the current revision and exactly one durable pending notification', async () => {
     await prisma.event.update({

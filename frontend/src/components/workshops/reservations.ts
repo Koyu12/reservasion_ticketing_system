@@ -16,6 +16,8 @@ export type ReservationDetails = {
     venueName: string
     venueAddress: string
     registrationClosesAt: string
+    cancelledAt: string | null
+    cancellationReason: string | null
   }
 }
 

@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError } from '../../api'
 import { ErrorState, LoadingState } from '../RequestState'
 import { eventRequest } from './events'
+import { WorkshopCancellation } from './WorkshopCancellation'
 import { formatWib, fromWibInput, toWibInput } from '../../workshop-time'
 import type {
   Workshop,
@@ -106,8 +107,9 @@ function WorkshopForm({
       )}
       {event?.status === 'PUBLISHED' && !locked && (
         <p>
-          Schedule and venue changes for published workshops are not available
-          yet.
+          Schedule and venue changes keep existing bookings and queue a notice
+          for each confirmed attendee. Changes require a reason and must be
+          saved before the current start time.
         </p>
       )}
       {error && (
@@ -143,14 +145,11 @@ function WorkshopForm({
         <div className="workshop-fields">
           {fields.map(({ name, label, type }) => {
             const issue = fieldErrors.find((item) => item.field === name)
-            const disabled =
-              event?.status === 'PUBLISHED' && significantFields.includes(name)
             const common = {
               id: `workshop-${name}`,
               name,
               value: values[name],
               required: true,
-              disabled,
               'aria-invalid': Boolean(issue),
               'aria-describedby': issue ? `error-${name}` : undefined,
               onChange: (
@@ -204,6 +203,12 @@ function WorkshopForm({
                 (issue) => issue.field === 'reason',
               )}
             />
+            {event?.status === 'PUBLISHED' && (
+              <p>
+                Saving this change queues attendee notices. Affected attendees
+                may cancel before the revised start time.
+              </p>
+            )}
           </div>
         )}
         <div className="workshop-actions">
@@ -212,7 +217,9 @@ function WorkshopForm({
               ? 'Saving…'
               : !event || event.status === 'DRAFT'
                 ? 'Save draft'
-                : 'Save changes'}
+                : significant
+                  ? 'Save change and queue notices'
+                  : 'Save changes'}
           </button>
           {event?.status === 'DRAFT' && (
             <button
@@ -268,10 +275,18 @@ export function WorkshopEditor() {
     onMutate: () => {
       setNotice('')
       publish.reset()
+      cancellation.reset()
     },
     onSuccess: async (data) => {
       client.setQueryData(['admin-event', data.event.id], data)
       await client.invalidateQueries({ queryKey: ['admin-events'] })
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['public-event', data.event.id] }),
+        client.invalidateQueries({ queryKey: ['public-events'] }),
+        client.invalidateQueries({ queryKey: ['admin-attendees'] }),
+        client.invalidateQueries({ queryKey: ['reservation'] }),
+        client.invalidateQueries({ queryKey: ['reservations'] }),
+      ])
       setNotice('Workshop saved.')
       if (!id)
         void navigate(`/admin/events/${data.event.id}`, { replace: true })
@@ -286,11 +301,41 @@ export function WorkshopEditor() {
     onMutate: () => {
       setNotice('')
       save.reset()
+      cancellation.reset()
     },
     onSuccess: async (data) => {
       client.setQueryData(['admin-event', id], data)
       await client.invalidateQueries({ queryKey: ['admin-events'] })
       setNotice('Workshop published.')
+    },
+  })
+  const cancellation = useMutation({
+    mutationFn: (reason: string) =>
+      eventRequest<WorkshopDetail>(`/${id}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+      }),
+    onMutate: () => {
+      setNotice('')
+      save.reset()
+      publish.reset()
+    },
+    onSuccess: (data) => {
+      client.setQueryData(['admin-event', data.event.id], data)
+      setNotice(
+        'Workshop cancelled. Cancellation notices have been queued for affected bookings.',
+      )
+    },
+    onSettled: async () => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['admin-event', id] }),
+        client.invalidateQueries({ queryKey: ['admin-events'] }),
+        client.invalidateQueries({ queryKey: ['admin-attendees'] }),
+        client.invalidateQueries({ queryKey: ['public-event', id] }),
+        client.invalidateQueries({ queryKey: ['public-events'] }),
+        client.invalidateQueries({ queryKey: ['reservation'] }),
+        client.invalidateQueries({ queryKey: ['reservations'] }),
+      ])
     },
   })
   const query = id ? detail : list
@@ -312,6 +357,11 @@ export function WorkshopEditor() {
       <Link to="/admin/events">Back to workshops</Link>
       <h1>{event ? event.title : 'Create workshop'}</h1>
       {event && (
+        <Link to={`/admin/events/${event.id}/attendees`}>
+          View attendees and cancellations
+        </Link>
+      )}
+      {event && (
         <p>
           {event.status === 'DRAFT'
             ? 'Draft'
@@ -326,12 +376,23 @@ export function WorkshopEditor() {
         Organizer contact: <a href={`mailto:${contact}`}>{contact}</a>
       </p>
       {notice && <p role="status">{notice}</p>}
+      {event && (
+        <WorkshopCancellation
+          key={event.id}
+          event={event}
+          pending={
+            save.isPending || publish.isPending || cancellation.isPending
+          }
+          error={cancellation.error}
+          onCancel={(reason) => cancellation.mutate(reason)}
+        />
+      )}
       <WorkshopForm
         key={`${id ?? 'new'}-${event?.updatedAt ?? ''}`}
         event={event}
         onSave={(input) => save.mutate(input)}
         onPublish={() => publish.mutate()}
-        pending={save.isPending || publish.isPending}
+        pending={save.isPending || publish.isPending || cancellation.isPending}
         error={save.error ?? publish.error}
       />
     </section>
