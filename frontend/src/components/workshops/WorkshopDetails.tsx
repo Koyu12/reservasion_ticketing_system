@@ -63,15 +63,31 @@ export function WorkshopDetails() {
             {availabilityLabels[event.availability]}
           </p>
           {event.availability === 'CANCELLED' && (
+            <div>
+              <p>
+                This workshop has been cancelled. Registration is unavailable.
+                Contact the organizer with any questions.
+              </p>
+              {event.cancelledAt && (
+                <p>
+                  Cancelled on{' '}
+                  <time dateTime={event.cancelledAt}>
+                    {formatWib(event.cancelledAt)}
+                  </time>
+                  .
+                </p>
+              )}
+              <p className="workshop-description">
+                Reason: {event.cancellationReason}
+              </p>
+            </div>
+          )}
+          {event.availability !== 'CANCELLED' && (
             <p>
-              This workshop has been cancelled. Registration is unavailable.
-              Contact the organizer with any questions.
+              {event.remainingPlaces} of {event.capacity} places remaining.
+              Availability may change.
             </p>
           )}
-          <p>
-            {event.remainingPlaces} of {event.capacity} places remaining.
-            Availability may change.
-          </p>
           <div className="workshop-description">{event.description}</div>
           <h2>Schedule and venue</h2>
           <dl className="workshop-facts">

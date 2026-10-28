@@ -31,6 +31,8 @@ export type PublicWorkshopDetail = {
     description: string
     venueAddress: string
     cancellationClosesAt: string
+    cancelledAt: string | null
+    cancellationReason: string | null
   }
   organizerContactEmail: string
 }

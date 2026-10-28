@@ -17,12 +17,17 @@ import { AdminGuard } from '../auth/admin.guard.js';
 import { ApplicationExceptionFilter } from '../common/application-exception.filter.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import {
+  cancelEventSchema,
   emptyObjectSchema,
   eventFieldsSchema,
   eventIdSchema,
   updateEventSchema,
 } from './events.schemas.js';
-import type { CreateEventInput, UpdateEventInput } from './events.schemas.js';
+import type {
+  CancelEventInput,
+  CreateEventInput,
+  UpdateEventInput,
+} from './events.schemas.js';
 import { EventsService } from './events.service.js';
 
 type AdminSession = UserSession<ReturnType<typeof createAuth>>;
@@ -63,6 +68,16 @@ export class EventsController {
     @Session() session: AdminSession,
   ) {
     return this.events.update(id, body, session.user.id);
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(200)
+  cancel(
+    @Param('id', idPipe) id: string,
+    @Body(new ZodValidationPipe(cancelEventSchema)) body: CancelEventInput,
+    @Session() session: AdminSession,
+  ) {
+    return this.events.cancel(id, body, session.user.id);
   }
 
   @Post(':id/publish')

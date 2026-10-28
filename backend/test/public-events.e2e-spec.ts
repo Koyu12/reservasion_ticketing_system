@@ -30,6 +30,8 @@ type EventDetail = {
     description: string;
     venueAddress: string;
     cancellationClosesAt: string;
+    cancelledAt: string | null;
+    cancellationReason: string | null;
   };
   organizerContactEmail: string;
 };
@@ -140,7 +142,7 @@ describe('Public workshop discovery (PostgreSQL)', () => {
       status: 'CANCELLED',
       cancelledAt: new Date(now),
       cancelledById: adminId,
-      cancellationReason: 'Private internal reason',
+      cancellationReason: 'Workshop venue unavailable',
       ...(startsAt ? { startsAt } : {}),
     });
   }
@@ -361,6 +363,8 @@ describe('Public workshop discovery (PostgreSQL)', () => {
         'description',
         'venueAddress',
         'cancellationClosesAt',
+        'cancelledAt',
+        'cancellationReason',
       ].sort(),
     );
     const json = JSON.stringify(response);
@@ -423,8 +427,9 @@ describe('Public workshop discovery (PostgreSQL)', () => {
       id: event.id,
       status: 'CANCELLED',
       availability: 'CANCELLED',
+      cancellationReason: 'Workshop venue unavailable',
+      cancelledAt: new Date(now).toISOString(),
     });
-    expect(JSON.stringify(response)).not.toContain('Private internal reason');
     expect(JSON.stringify(response)).not.toContain(adminId);
   });
 

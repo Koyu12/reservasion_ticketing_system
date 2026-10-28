@@ -64,6 +64,9 @@ export function WorkshopList() {
                     <p>
                       {event.confirmedCount} / {event.capacity} confirmed
                     </p>
+                    <Link to={`/admin/events/${event.id}/attendees`}>
+                      View attendees
+                    </Link>
                   </div>
                 </li>
               ))}

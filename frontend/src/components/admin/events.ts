@@ -15,6 +15,9 @@ export type Workshop = {
   confirmedCount: number
   createdAt: string
   updatedAt: string
+  cancelledAt: string | null
+  cancelledById: string | null
+  cancellationReason: string | null
 }
 export type WorkshopFields = Pick<
   Workshop,
@@ -29,6 +32,30 @@ export type WorkshopFields = Pick<
 > & { reason?: string }
 export type WorkshopDetail = { event: Workshop; organizerContactEmail: string }
 export type WorkshopList = { events: Workshop[]; organizerContactEmail: string }
+
+export type AdminReservation = {
+  id: string
+  eventId: string
+  bookingReference: string
+  status: 'CONFIRMED' | 'CANCELLED'
+  createdAt: string
+  attendee: { name: string; email: string }
+  cancelledAt: string | null
+  cancelledById: string | null
+  cancelledBy: { id: string; name: string } | null
+  cancellationSource: 'SELF_SERVICE' | 'ADMIN' | 'EVENT_CANCELLED' | null
+  cancellationReason: string | null
+}
+
+export type AttendeeList = {
+  event: Pick<
+    Workshop,
+    'id' | 'title' | 'status' | 'startsAt' | 'endsAt' | 'capacity'
+  >
+  confirmedCount: number
+  confirmed: AdminReservation[]
+  cancelled: AdminReservation[]
+}
 
 export async function eventRequest<T>(
   path: string,

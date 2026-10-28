@@ -9,6 +9,7 @@ import { ResetPassword } from './components/ResetPassword'
 import { RequireAdmin } from './components/RequireAdmin'
 import { WorkshopList } from './components/admin/WorkshopList'
 import { WorkshopEditor } from './components/admin/WorkshopEditor'
+import { WorkshopAttendees } from './components/admin/WorkshopAttendees'
 import { WorkshopDiscovery } from './components/workshops/WorkshopDiscovery'
 import { WorkshopDetails } from './components/workshops/WorkshopDetails'
 import { BookingConfirmation } from './components/workshops/BookingConfirmation'
@@ -115,6 +116,14 @@ export default function App() {
             element={
               <RequireAdmin>
                 <WorkshopEditor key="new" />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/admin/events/:id/attendees"
+            element={
+              <RequireAdmin>
+                <WorkshopAttendees />
               </RequireAdmin>
             }
           />
