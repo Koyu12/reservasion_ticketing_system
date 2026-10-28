@@ -218,11 +218,38 @@ Skip confirmations for cancelled bookings/events and event-change notices supers
 
 Better Auth retains ownership of verification and recovery tokens, their expiry, and resend/recovery flows. Its delivery callbacks send through the selected provider using the application's email-delivery boundary. Authentication emails and sensitive links are excluded from the persistent `EmailJob` queue; the business-change/outbox atomicity above applies to booking and event operations.
 
-Resend is the selected delivery provider. `backend/src/email/` exports a shared `EmailService` through `EmailModule`; Better Auth callbacks and the later notification sender will consume it. `send({ to, subject, text })` uses Node's built-in `fetch` with a 10-second timeout, returns the provider message ID, and reports sanitized failures without logging credentials, contents, or raw provider responses. Configuration is checked when sending, so starting the application does not send email or require provider access. No SDK dependency or automatic retry is introduced.
+Resend is the selected delivery provider. `backend/src/email/` exports a shared `EmailService` through `EmailModule`; Better Auth callbacks and the later notification sender will consume it. `send({ to, subject, text })` uses Node's built-in `fetch` with a 10-second timeout covering the request and response-body reading, returns the provider message ID, and reports sanitized failures without logging credentials, contents, or raw provider responses. Configuration is checked when sending, so starting the application does not send email or require provider access. No SDK dependency or automatic retry within `EmailService` is introduced.
 
 Backend environment variables are `RESEND_API_KEY` and `EMAIL_FROM`; `EMAIL_TEST_TO` selects the controlled recipient only for explicit local smoke tests. The `resend.dev` test sender is limited to the account's own inbox. Public-demo sending requires a verified sender domain; domain readiness, budget, and organizer contact configuration remain open under D3.
 
-Precise attempt limits, retry intervals, claim-expiry settings, and provider-idempotency behavior remain integration decisions before implementing delivery processing. The initial provider timeout is 10 seconds; reconcile it with claim duration in D4. The application does not promise timely background processing while its host is stopped or asleep.
+### Delivery and Retry Policy (D4)
+
+`backend/src/email/delivery-policy.ts` exports the readonly `EMAIL_DELIVERY_POLICY` configuration. These are fixed V1 values in milliseconds, without environment overrides or jitter. P3-05 establishes the policy and shared timeout; P3-06 implements the sender and its policy checks, and P3-07 implements the admin retry operation.
+
+| Setting | Value |
+| --- | --- |
+| Attempts per retry cycle | 5 total, including the initial attempt |
+| Delays after failed attempts 1–4 | 30 seconds, 2 minutes, 10 minutes, 1 hour |
+| Worker polling interval | 5 seconds |
+| Provider request timeout, including response-body reading | 10 seconds |
+| Claim expiry | 60 seconds |
+| Resend idempotency window | 24 hours |
+
+Retry delays run from the failed attempt's completion. A retryable response's valid nonnegative `retry-after` value in seconds extends the scheduled delay when longer; a missing or invalid value leaves the scheduled delay unchanged. The fifth unsuccessful attempt ends the cycle as `FAILED`.
+
+Classify provider outcomes using HTTP status and allowlisted provider error names, retaining only sanitized messages:
+
+- Retry network failures, timeouts, malformed successful responses, HTTP 408, HTTP 5xx, rate-limit responses, and HTTP 409 with `concurrent_idempotent_requests`.
+- Missing configuration, authentication/domain/validation failures, daily or monthly quota exhaustion, payload conflicts (`invalid_idempotent_request`), and other HTTP 4xx responses require intervention and become `FAILED` without automatic retry. Recognized quota exhaustion takes precedence over the general rate-limit rule. An unrecognized HTTP 409 is not automatically retried.
+- Never retain raw provider responses, credentials, or message contents in error records. [Resend's error reference](https://resend.com/docs/api-reference/errors) distinguishes error names; its [usage limits](https://resend.com/docs/api-reference/rate-limit) describe `retry-after` in seconds.
+
+Each claim permits one provider invocation. Immediately before invoking the provider, verify current ownership and more than 10 seconds remaining on the lease, then increment the total and current-cycle attempt counters. Otherwise, do not send or consume an attempt; release an owned claim for fresh claiming. Claiming and obsolescence checks consume no attempt, and skipped messages are not failures. Network calls remain outside database transactions and all result updates are fenced by the claim token.
+
+Recover expired claims without resetting counters. An interrupted final attempt becomes `FAILED`. If no attempt has been made in the current cycle, the job is immediately eligible again; otherwise use the delay associated with the current cycle attempt count, measured from `lastAttemptAt` because completion time is unavailable after interruption, and make it eligible immediately if that delay has elapsed. Manual retry applies only to `FAILED`: retain the job/deduplication identity and total attempts, reset the cycle count, set pending time, and record the admin/time. Both paths reuse normal claiming and obsolescence checks without repeating the business operation.
+
+P3-06 will send the stable `Idempotency-Key: email-job/<job UUID>` header across automatic and manual retries. Resend deduplicates identical requests for 24 hours; a concurrent request with the same key can be retried, while a different payload under that key causes a conflict. Still-valid confirmations render current event details; if those details changed between attempts and Resend rejects the payload, mark the job `FAILED` for admin review rather than rotating the key or freezing outdated details. Do not change the key on manual retry to bypass a conflict. After the provider's window expires, retrying may duplicate a previously accepted email. See [Resend's idempotency documentation](https://resend.com/docs/dashboard/emails/idempotency-keys).
+
+Provider acceptance is recorded as `SENT`, not proof of inbox delivery. Neither claims nor provider idempotency guarantee exactly-once delivery. The application does not promise timely background processing while its host is stopped or asleep. D3's public-demo sender-domain readiness, budget, and organizer contact prerequisites remain open.
 
 ## 8. Development and Deployment
 
