@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { Injectable } from '@nestjs/common';
+import { EMAIL_DELIVERY_POLICY } from './delivery-policy.js';
 
 export interface EmailMessage {
   to: string;
@@ -29,7 +30,7 @@ export class EmailService {
           subject: message.subject,
           text: message.text,
         }),
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(EMAIL_DELIVERY_POLICY.requestTimeoutMs),
       });
     } catch {
       throw new Error('Email delivery request failed');

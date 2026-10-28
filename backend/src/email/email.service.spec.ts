@@ -1,5 +1,22 @@
 import { jest } from '@jest/globals';
 import { EmailService } from './email.service.js';
+import { EMAIL_DELIVERY_POLICY } from './delivery-policy.js';
+
+describe('Email delivery policy', () => {
+  it('provides increasing delays for every retry and a lease longer than the request', () => {
+    const policy = EMAIL_DELIVERY_POLICY;
+    expect(policy.retryDelaysMs).toHaveLength(policy.maxAttemptsPerCycle - 1);
+    let previousDelay = 0;
+    for (const delay of policy.retryDelaysMs) {
+      expect(delay).toBeGreaterThan(previousDelay);
+      previousDelay = delay;
+    }
+    expect(policy.pollIntervalMs).toBeGreaterThan(0);
+    expect(policy.requestTimeoutMs).toBeGreaterThan(0);
+    expect(policy.claimTtlMs).toBeGreaterThan(policy.requestTimeoutMs);
+    expect(policy.idempotencyWindowMs).toBeGreaterThan(0);
+  });
+});
 
 describe('EmailService', () => {
   const message = {
@@ -50,6 +67,10 @@ describe('EmailService', () => {
       signal: expect.any(AbortSignal) as AbortSignal,
     });
     expect(timeout).toHaveBeenCalledWith(10_000);
+    expect(timeout).toHaveBeenCalledWith(
+      EMAIL_DELIVERY_POLICY.requestTimeoutMs,
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it.each(['RESEND_API_KEY', 'EMAIL_FROM'])(
@@ -101,5 +122,20 @@ describe('EmailService', () => {
     await expect(service.send(message)).rejects.toThrow(
       'Email provider returned an invalid response',
     );
+  });
+
+  it('sanitizes an interrupted response body without retrying', async () => {
+    const response = Response.json({ id: 'test-message-id' });
+    jest
+      .spyOn(response, 'json')
+      .mockRejectedValue(
+        new DOMException('Sensitive body details', 'TimeoutError'),
+      );
+    fetchMock.mockResolvedValue(response);
+
+    await expect(service.send(message)).rejects.toThrow(
+      'Email provider returned an invalid response',
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
