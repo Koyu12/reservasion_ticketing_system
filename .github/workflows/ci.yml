@@ -14,6 +14,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: reservation_ticketing_system_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d reservation_ticketing_system_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
     defaults:
       run:
         working-directory: backend
@@ -31,7 +46,7 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-        
+
       - name: Generate Prisma Client
         run: npx prisma generate --config prisma7.config.ts
 
@@ -44,5 +59,16 @@ jobs:
       - name: Run unit tests
         run: npm test -- --runInBand
 
+      - name: Apply test database migrations
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/reservation_ticketing_system_test
+        run: npx prisma migrate deploy --config prisma7.config.ts
+
       - name: Run end-to-end tests
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/reservation_ticketing_system_test
+          BETTER_AUTH_SECRET: ci-only-auth-secret-not-for-production-12345
+          BETTER_AUTH_URL: http://localhost:3000
+          FRONTEND_URL: http://localhost:5173
+          ORGANIZER_CONTACT_EMAIL: organizer@example.invalid
         run: npm run test:e2e -- --runInBand
