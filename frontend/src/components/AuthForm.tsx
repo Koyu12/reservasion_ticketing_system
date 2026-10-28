@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router'
 import { authClient } from '../auth-client'
 import { ErrorState, LoadingState } from './RequestState'
+import { authPath, safeReturnTo } from '../return-to'
 
 export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
   const {
@@ -16,6 +17,10 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
   const [error, setError] = useState('')
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
+  const returnTo = safeReturnTo(params.get('returnTo'))
+  const verificationPath = authPath('/verify-email', returnTo)
+  const cleanParams = () =>
+    setParams(returnTo === '/events' ? {} : { returnTo }, { replace: true })
   const registering = mode === 'register'
   const googleError = params.has('error')
     ? params.get('error') === 'access_denied'
@@ -28,14 +33,14 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
   async function signInWithGoogle() {
     setSubmitting(true)
     setError('')
-    setParams({}, { replace: true })
+    cleanParams()
     try {
       const origin = window.location.origin
       const result = await authClient.signIn.social({
         provider: 'google',
-        callbackURL: `${origin}/events`,
-        errorCallbackURL: `${origin}/login`,
-        newUserCallbackURL: `${origin}/events`,
+        callbackURL: `${origin}${returnTo}`,
+        errorCallbackURL: `${origin}${authPath('/login', returnTo)}`,
+        newUserCallbackURL: `${origin}${returnTo}`,
       })
       if (result.error) {
         setError(
@@ -63,14 +68,14 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
     }
     setSubmitting(true)
     setError('')
-    setParams({}, { replace: true })
+    cleanParams()
     try {
       const result = registering
         ? await authClient.signUp.email({
             name,
             email,
             password,
-            callbackURL: new URL('/verify-email', window.location.origin).href,
+            callbackURL: new URL(verificationPath, window.location.origin).href,
           })
         : await authClient.signIn.email({ email, password })
       if (result.error) {
@@ -84,7 +89,7 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
         return
       }
       await refetch()
-      await navigate(registering ? '/verify-email' : '/events', {
+      await navigate(registering ? verificationPath : returnTo, {
         replace: true,
       })
     } catch {
@@ -107,8 +112,8 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
       <Navigate
         to={
           registering && !session.user.emailVerified
-            ? '/verify-email'
-            : '/events'
+            ? verificationPath
+            : returnTo
         }
         replace
       />
@@ -187,7 +192,7 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
       )}
       <p>
         {registering ? 'Already have an account? ' : 'New here? '}
-        <Link to={registering ? '/login' : '/register'}>
+        <Link to={authPath(registering ? '/login' : '/register', returnTo)}>
           {registering ? 'Sign in' : 'Create account'}
         </Link>
       </p>

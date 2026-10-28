@@ -4,9 +4,19 @@ import { AppService } from './app.service.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { EmailModule } from './email/email.module.js';
 import { AppAuthModule } from './auth/auth.module.js';
+import { EventsModule } from './events/events.module.js';
+import { NotificationsModule } from './notifications/notifications.module.js';
+import { ReservationsModule } from './reservations/reservations.module.js';
 
 @Module({
-  imports: [PrismaModule, EmailModule, AppAuthModule],
+  imports: [
+    PrismaModule,
+    EmailModule,
+    AppAuthModule,
+    EventsModule,
+    NotificationsModule,
+    ReservationsModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })

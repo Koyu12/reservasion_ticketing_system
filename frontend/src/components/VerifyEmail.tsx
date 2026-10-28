@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Link, useSearchParams } from 'react-router'
+import { Link, Navigate, useSearchParams } from 'react-router'
 import { authClient } from '../auth-client'
 import { ErrorState, LoadingState } from './RequestState'
+import { authPath, safeReturnTo } from '../return-to'
 
 export function VerifyEmail() {
   const {
@@ -11,6 +12,7 @@ export function VerifyEmail() {
     refetch,
   } = authClient.useSession()
   const [params, setParams] = useSearchParams()
+  const returnTo = safeReturnTo(params.get('returnTo'))
   const [requesting, setRequesting] = useState(false)
   const [checking, setChecking] = useState(false)
   const [notice, setNotice] = useState('')
@@ -30,7 +32,10 @@ export function VerifyEmail() {
     try {
       const result = await authClient.sendVerificationEmail({
         email: session.user.email,
-        callbackURL: new URL('/verify-email', window.location.origin).href,
+        callbackURL: new URL(
+          authPath('/verify-email', returnTo),
+          window.location.origin,
+        ).href,
       })
       if (result.error) {
         setError(
@@ -40,7 +45,7 @@ export function VerifyEmail() {
         )
         return
       }
-      setParams({}, { replace: true })
+      setParams(returnTo === '/events' ? {} : { returnTo }, { replace: true })
       setNotice(
         'Verification email requested. Check your inbox and spam folder. If it does not arrive, you can request another link.',
       )
@@ -72,6 +77,9 @@ export function VerifyEmail() {
       />
     )
 
+  if (session?.user.emailVerified && returnTo !== '/events')
+    return <Navigate to={returnTo} replace />
+
   return (
     <>
       <h1>Verify your email</h1>
@@ -89,8 +97,8 @@ export function VerifyEmail() {
           {session ? (
             <>
               <p>
-                Check the inbox for {session.user.email} for a verification link.
-                Links expire after one hour.
+                Check the inbox for {session.user.email} for a verification
+                link. Links expire after one hour.
               </p>
               <p>
                 You can browse workshops while unverified. Verify your email
@@ -115,8 +123,8 @@ export function VerifyEmail() {
             </>
           ) : (
             <p>
-              <Link to="/login">Sign in</Link> to check your verification status
-              or request a new link.
+              <Link to={authPath('/login', returnTo)}>Sign in</Link> to check
+              your verification status or request a new link.
             </p>
           )}
           <p>

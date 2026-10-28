@@ -194,9 +194,9 @@ Reservation-history checks remain scheduled for P2-03.
 
 **Depends on:** P1-03, P1-05, P1-11. **Area:** Events controller/service/Zod schemas, application exception filter, and admin workshop forms.
 
-- [ ] Define the event-management API contract and implement complete required drafts, ordinary edits, publication, capacity, deadlines, fixed WIB input, and shared organizer contact display. Add the small Zod pipe and safe application error handling with these real endpoints.
-- [ ] Apply the event-lock protocol from the first capacity/deadline implementation. Significant draft schedule/venue edits require a reason and immutable before/after revision history. Reject significant published-event edits until P3-03 implements their complete mutation/history/notification operation; ordinary published edits remain available within their rules.
-- [ ] Verify invalid fields/unknown server-owned input, start/end/deadline checks, admin-only access, capacity below seeded confirmed counts, nonblank reasons, revision consistency, and ordinary JSON parsing alongside Better Auth.
+- [X] Define the event-management API contract and implement complete required drafts, ordinary edits, publication, capacity, deadlines, fixed WIB input, and shared organizer contact display. Add the small Zod pipe and safe application error handling with these real endpoints.
+- [X] Apply the event-lock protocol from the first capacity/deadline implementation. Significant draft schedule/venue edits require a reason and immutable before/after revision history. Reject significant published-event edits until P3-03 implements their complete mutation/history/notification operation; ordinary published edits remain available within their rules.
+- [X] Verify invalid fields/unknown server-owned input, start/end/deadline checks, admin-only access, capacity below seeded confirmed counts, nonblank reasons, revision consistency, and ordinary JSON parsing alongside Better Auth.
 
 **Done when:** An admin can publish a valid workshop through the UI, and application errors are useful without exposing ORM errors or secrets.
 
@@ -204,9 +204,11 @@ Reservation-history checks remain scheduled for P2-03.
 
 **Depends on:** P1-03, P1-12. **Area:** Public event list/detail API and React pages.
 
-- [ ] Implement upcoming published events, title search, WIB date filtering in URL parameters, and event details with schedule, venue/address, availability, deadlines, policy, and contact email.
-- [ ] Handle available/full/registration-closed/cancelled conditions and loading/empty/error states. Protect drafts from anonymous discovery; keep cancelled details clear to an attendee following an existing event link.
-- [ ] Verify title filtering, WIB day boundaries from a differently configured browser timezone, draft visibility, and availability/deadline labels using controlled records.
+- [X] Implement upcoming published events, title search, WIB date filtering in URL parameters, and event details with schedule, venue/address, availability, deadlines, policy, and contact email.
+- [X] Handle available/full/registration-closed/cancelled conditions and loading/empty/error states. Protect drafts from anonymous discovery; keep cancelled details clear to an attendee following an existing event link.
+- [X] Verify title filtering, WIB day boundaries from a differently configured browser timezone, draft visibility, and availability/deadline labels using controlled records.
+
+Manual browser verification is pending because browser automation is unavailable.
 
 **Done when:** A visitor can find and understand a workshop without signing in. The API remains authoritative for subsequent booking.
 
@@ -218,8 +220,8 @@ Reservation-history checks remain scheduled for P2-03.
 
 **Depends on:** P1-05. **Area:** Notification service enqueue operations and shared transaction-client use.
 
-- [ ] Implement the typed enqueue operation consumed by business services: caller-owned Prisma transaction plus notification type, reservation ID, and optional event-change ID. Capture recipient email and derive the unique logical deduplication key.
-- [ ] Validate change/event pairing and type-specific relationships, initialize a pending job, and avoid provider calls. Verify `business_rollback_removes_pending_job`, `duplicate_action_does_not_duplicate_job`, and `mismatched_event_change_is_rejected`.
+- [X] Implement the typed enqueue operation consumed by business services: caller-owned Prisma transaction plus notification type, reservation ID, and optional event-change ID. Capture recipient email and derive the unique logical deduplication key.
+- [X] Validate change/event pairing and type-specific relationships, initialize a pending job, and avoid provider calls. Verify `business_rollback_removes_pending_job`, `duplicate_action_does_not_duplicate_job`, and `mismatched_event_change_is_rejected`.
 
 **Done when:** Business services can save jobs using their own transaction client. No independent nested transaction or unpersisted background send replaces this operation.
 
@@ -227,9 +229,11 @@ Reservation-history checks remain scheduled for P2-03.
 
 **Depends on:** P1-08, P1-12, P1-13, P2-01. **Area:** Reservation controller/service/Zod contract and event-page booking/confirmation UI.
 
-- [ ] Implement booking with session identity, verified email, event row lock at `READ COMMITTED`, current time after lock acquisition, current eligibility/count checks, a cryptographically random unique reference, and recorded event revision.
-- [ ] Save the reservation and `BOOKING_CONFIRMED` job atomically; the UI shows the successful reference or a useful conflict and refreshes affected queries. Handle a reference collision by safely retrying the rolled-back creation.
-- [ ] Verify `two_requests_for_last_place_create_one_booking`, `duplicate_requests_create_one_confirmed_booking`, `deadline_crossed_while_waiting_rejects_booking`, and rejection of unpublished/cancelled/started/full/closed events. Confirm no orphan job survives a failed booking and admin personal bookings obey the same rules.
+- [X] Implement booking with session identity, verified email, event row lock at `READ COMMITTED`, current time after lock acquisition, current eligibility/count checks, a cryptographically random unique reference, and recorded event revision.
+- [X] Save the reservation and `BOOKING_CONFIRMED` job atomically; the UI shows the successful reference or a useful conflict and refreshes affected queries. Handle a reference collision by safely retrying the rolled-back creation.
+- [X] Verify `two_requests_for_last_place_create_one_booking`, `duplicate_requests_create_one_confirmed_booking`, `deadline_crossed_while_waiting_rejects_booking`, and rejection of unpublished/cancelled/started/full/closed events. Confirm no orphan job survives a failed booking and admin personal bookings obey the same rules.
+
+Browser verification of booking, confirmation, and authentication return navigation is pending: automatic approval review rejected Chrome Computer Use access.
 
 **Done when:** The complete booking action is capacity-safe from its first implementation, with a durable pending notification. Actual background delivery is P3-06.
 
@@ -237,8 +241,10 @@ Reservation-history checks remain scheduled for P2-03.
 
 **Depends on:** P2-02. **Area:** Owned reservation reads, My reservations, and booking details.
 
-- [ ] Expose only the signed-in user's current/past reservations, preserving cancelled entries, references, current event information, cancellation deadlines, and shared late-cancellation contact instructions.
-- [ ] Verify `another_attendees_id_does_not_reveal_booking`, history visibility, empty/error states, and refresh after booking. Complete the linked-Google identity check from P1-10 against real existing reservations when its credentials are available.
+- [X] Expose only the signed-in user's current/past reservations, preserving cancelled entries, references, current event information, cancellation deadlines, and shared late-cancellation contact instructions.
+- [X] Verify `another_attendees_id_does_not_reveal_booking`, history visibility, empty/error states, and refresh after booking. Complete the linked-Google identity check from P1-10 against real existing reservations when its credentials are available.
+
+Browser checks and controlled real Google sign-in with existing reservations remain pending; Chrome Computer Use access was rejected by automatic approval review. Automated PostgreSQL history/ownership and simulated Google callback checks passed.
 
 **Done when:** An attendee can return to their booking through either permitted linked sign-in method, and references do not substitute for authorization.
 
