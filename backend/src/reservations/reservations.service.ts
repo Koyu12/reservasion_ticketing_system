@@ -175,6 +175,57 @@ export class ReservationsService {
     };
   }
 
+  async cancel(id: string, userId: string) {
+    const owned = await this.prisma.reservation.findFirst({
+      where: { id, userId },
+      select: { eventId: true },
+    });
+    if (!owned) throw new NotFoundException('Reservation not found.');
+    const select = { ...bookingSelect, cancelledAt: true };
+    const reservation = await this.prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "Event" WHERE "id" = ${owned.eventId}::uuid FOR UPDATE`;
+        const current = await tx.reservation.findFirst({
+          where: { id, userId },
+          select: detailSelect,
+        });
+        if (!current) throw new NotFoundException('Reservation not found.');
+        if (current.status === 'CANCELLED')
+          return tx.reservation.findUniqueOrThrow({ where: { id }, select });
+
+        const now = new Date(Date.now());
+        if (
+          current.event.status !== 'PUBLISHED' ||
+          now >= presentReservation(current).cancellationClosesAt
+        )
+          throw new ConflictException({
+            code: 'CANCELLATION_CLOSED',
+            message:
+              'Self-service cancellation has closed. Contact the organizer and include your booking reference.',
+          });
+
+        const cancelled = await tx.reservation.update({
+          where: { id },
+          data: {
+            status: 'CANCELLED',
+            cancelledAt: now,
+            cancelledById: userId,
+            cancellationSource: 'SELF_SERVICE',
+            cancellationReason: null,
+          },
+          select,
+        });
+        await this.notifications.enqueue(tx, {
+          type: 'RESERVATION_CANCELLED',
+          reservationId: id,
+        });
+        return cancelled;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
+    );
+    return { reservation };
+  }
+
   async list(userId: string) {
     const reservations = await this.prisma.reservation.findMany({
       where: { userId },

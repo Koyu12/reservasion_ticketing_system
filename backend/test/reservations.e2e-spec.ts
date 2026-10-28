@@ -193,6 +193,13 @@ describe('Reservations (PostgreSQL)', () => {
       .get('/api/reservations')
       .set('Cookie', identity.cookie);
   }
+  function cancel(id: string, identity = attendee, body: unknown = {}) {
+    return request(app.getHttpServer())
+      .post(`/api/reservations/${id}/cancel`)
+      .set('Origin', origin)
+      .set('Cookie', identity.cookie)
+      .send(body);
+  }
   async function expectCounts(reservations: number, jobs = reservations) {
     expect(
       await prisma.reservation.count({ where: { eventId: event.id } }),
@@ -455,6 +462,318 @@ describe('Reservations (PostgreSQL)', () => {
       },
     );
     await expectCounts(0);
+  });
+
+  it.each([-1, 0, 1])(
+    'self-service cancellation at %i ms relative to the 24-hour cutoff',
+    async (offset) => {
+      const { reservation } = (await book().expect(201))
+        .body as BookingResponse;
+      const now = event.startsAt.getTime() - 86400000 + offset;
+      jest.spyOn(Date, 'now').mockReturnValue(now);
+      const response = await cancel(reservation.id).expect(
+        offset < 0 ? 200 : 409,
+      );
+      if (offset < 0) {
+        expect(response.body).toEqual({
+          reservation: {
+            ...reservation,
+            status: 'CANCELLED',
+            cancelledAt: new Date(now).toISOString(),
+          },
+        });
+        expect(
+          await prisma.reservation.findUnique({
+            where: { id: reservation.id },
+          }),
+        ).toMatchObject({
+          status: 'CANCELLED',
+          cancelledAt: new Date(now),
+          cancelledById: attendee.id,
+          cancellationSource: 'SELF_SERVICE',
+          cancellationReason: null,
+          bookedRevision: 0,
+        });
+        expect(
+          await prisma.emailJob.findUnique({
+            where: {
+              deduplicationKey: `RESERVATION_CANCELLED:${reservation.id}`,
+            },
+          }),
+        ).toMatchObject({
+          type: 'RESERVATION_CANCELLED',
+          status: 'PENDING',
+          recipientEmail: attendee.email,
+        });
+      } else {
+        expect(response.body).toMatchObject({ code: 'CANCELLATION_CLOSED' });
+        expect(
+          await prisma.reservation.findUnique({
+            where: { id: reservation.id },
+          }),
+        ).toMatchObject({
+          status: 'CONFIRMED',
+          cancelledAt: null,
+          cancelledById: null,
+          cancellationSource: null,
+        });
+      }
+      await expectCounts(1, offset < 0 ? 2 : 1);
+    },
+  );
+
+  it.each([-1, 0, 1])(
+    'affected reservation cancellation at %i ms relative to the revised start',
+    async (offset) => {
+      const { reservation } = (await book().expect(201))
+        .body as BookingResponse;
+      const revisedStart = new Date(event.startsAt.getTime() + 3600000);
+      await prisma.event.update({
+        where: { id: event.id },
+        data: {
+          startsAt: revisedStart,
+          endsAt: new Date(revisedStart.getTime() + 3600000),
+          scheduleRevision: 1,
+        },
+      });
+      jest.spyOn(Date, 'now').mockReturnValue(revisedStart.getTime() + offset);
+      await cancel(reservation.id).expect(offset < 0 ? 200 : 409);
+      await expectCounts(1, offset < 0 ? 2 : 1);
+    },
+  );
+
+  it.each([false, true])(
+    'rechecks the cancellation cutoff after an event-lock wait (affected=%s)',
+    async (affected) => {
+      const { reservation } = (await book().expect(201))
+        .body as BookingResponse;
+      if (affected)
+        await prisma.event.update({
+          where: { id: event.id },
+          data: { scheduleRevision: 1 },
+        });
+      const deadline = event.startsAt.getTime() - (affected ? 0 : 86400000);
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(deadline - 1);
+      await whileEventLocked(
+        () => cancel(reservation.id).expect(409),
+        () => {
+          clock.mockReturnValue(deadline);
+        },
+      );
+      await expectCounts(1);
+      expect(
+        await prisma.reservation.findUnique({ where: { id: reservation.id } }),
+      ).toMatchObject({ status: 'CONFIRMED', cancelledAt: null });
+    },
+  );
+
+  it('rejects anonymous, unowned, malformed and injected cancellation requests', async () => {
+    const { reservation } = (await book().expect(201)).body as BookingResponse;
+    await request(app.getHttpServer())
+      .post(`/api/reservations/${reservation.id}/cancel`)
+      .set('Origin', origin)
+      .send({})
+      .expect(401);
+    const foreign = await cancel(reservation.id, other).expect(404);
+    const missing = await cancel(randomUUID(), other).expect(404);
+    expect(foreign.body).toEqual(missing.body);
+    await cancel(reservation.id, admin).expect(404);
+    await cancel('invalid').expect(400);
+    for (const body of [
+      { userId: other.id },
+      { status: 'CANCELLED' },
+      { cancelledById: admin.id },
+      { cancellationReason: 'Injected' },
+      { cancellationSource: 'ADMIN' },
+    ])
+      await cancel(reservation.id, attendee, body).expect(400);
+    for (const requestOrigin of [undefined, 'https://untrusted.example']) {
+      const pending = request(app.getHttpServer())
+        .post(`/api/reservations/${reservation.id}/cancel`)
+        .set('Cookie', attendee.cookie)
+        .send({});
+      if (requestOrigin) pending.set('Origin', requestOrigin);
+      await pending.expect(403);
+    }
+    await expectCounts(1);
+  });
+
+  it('allows cancellation without verified email and keeps admin personal cancellations on attendee rules', async () => {
+    const { reservation } = (await book().expect(201)).body as BookingResponse;
+    await prisma.user.update({
+      where: { id: attendee.id },
+      data: { emailVerified: false },
+    });
+    await cancel(reservation.id).expect(200);
+    const personal = (await book(admin).expect(201)).body as BookingResponse;
+    const clock = jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(event.startsAt.getTime() - 86400000);
+    await cancel(personal.reservation.id, admin).expect(409);
+    clock.mockReturnValue(event.startsAt.getTime() - 86400000 - 1);
+    await cancel(personal.reservation.id, admin).expect(200);
+    expect(
+      await prisma.reservation.findUnique({
+        where: { id: personal.reservation.id },
+      }),
+    ).toMatchObject({
+      cancelledById: admin.id,
+      cancellationSource: 'SELF_SERVICE',
+      cancellationReason: null,
+    });
+  });
+
+  it('repeated and concurrent cancellation preserves the first metadata and one notice', async () => {
+    const { reservation } = (await book().expect(201)).body as BookingResponse;
+    const responses = await Promise.all([
+      cancel(reservation.id).expect(200),
+      cancel(reservation.id).expect(200),
+    ]);
+    expect(responses[0].body).toEqual(responses[1].body);
+    const original = await prisma.reservation.findUniqueOrThrow({
+      where: { id: reservation.id },
+    });
+    jest.spyOn(Date, 'now').mockReturnValue(event.endsAt.getTime());
+    expect((await cancel(reservation.id).expect(200)).body).toEqual(
+      responses[0].body,
+    );
+    expect(
+      await prisma.reservation.findUniqueOrThrow({
+        where: { id: reservation.id },
+      }),
+    ).toEqual(original);
+    await expectCounts(1, 2);
+  });
+
+  it('cancellation and its notification roll back together on enqueue failure', async () => {
+    const { reservation } = (await book().expect(201)).body as BookingResponse;
+    const originalNotifications = new NotificationsService();
+    jest
+      .spyOn(notifications, 'enqueue')
+      .mockImplementationOnce(async (tx, input) => {
+        await originalNotifications.enqueue(tx, input);
+        throw new Error('sensitive-cancellation-details');
+      });
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const response = await cancel(reservation.id).expect(500);
+    expect(JSON.stringify(response.body)).not.toContain(
+      'sensitive-cancellation-details',
+    );
+    expect(
+      await prisma.reservation.findUnique({ where: { id: reservation.id } }),
+    ).toMatchObject({
+      status: 'CONFIRMED',
+      cancelledAt: null,
+      cancelledById: null,
+      cancellationSource: null,
+    });
+    await expectCounts(1);
+    await cancel(reservation.id).expect(200);
+    await expectCounts(1, 2);
+  });
+
+  it('cancel_rebook_cancel_preserves_all_history', async () => {
+    const first = (await book().expect(201)).body as BookingResponse;
+    await cancel(first.reservation.id).expect(200);
+    const original = await prisma.reservation.findUniqueOrThrow({
+      where: { id: first.reservation.id },
+    });
+    await prisma.event.update({
+      where: { id: event.id },
+      data: { scheduleRevision: 2 },
+    });
+    const second = (await book().expect(201)).body as BookingResponse;
+    expect(second.reservation.id).not.toBe(first.reservation.id);
+    expect(second.reservation.bookingReference).not.toBe(
+      first.reservation.bookingReference,
+    );
+    expect(
+      await prisma.reservation.findUnique({
+        where: { id: second.reservation.id },
+      }),
+    ).toMatchObject({ bookedRevision: 2 });
+    expect((await get(second.reservation.id).expect(200)).body).toMatchObject({
+      reservation: { affectedByChange: false },
+    });
+    await cancel(second.reservation.id).expect(200);
+    expect(
+      await prisma.reservation.findUniqueOrThrow({
+        where: { id: first.reservation.id },
+      }),
+    ).toEqual(original);
+    const history = (await list().expect(200)).body as ReservationListResponse;
+    expect(history.current).toEqual([]);
+    expect(history.history.map((entry) => entry.id).sort()).toEqual(
+      [first.reservation.id, second.reservation.id].sort(),
+    );
+    expect(history.history.every((entry) => entry.status === 'CANCELLED')).toBe(
+      true,
+    );
+    await expectCounts(2, 4);
+    const third = (await book().expect(201)).body as BookingResponse;
+    await cancel(first.reservation.id).expect(200);
+    expect(
+      await prisma.reservation.findUnique({
+        where: { id: third.reservation.id },
+      }),
+    ).toMatchObject({ status: 'CONFIRMED', bookedRevision: 2 });
+    await expectCounts(3, 5);
+  });
+
+  it('rebooking after a change does not inherit the earlier cancellation exception', async () => {
+    await prisma.event.update({
+      where: { id: event.id },
+      data: {
+        registrationClosesAt: new Date(event.startsAt.getTime() - 3600000),
+      },
+    });
+    const first = (await book().expect(201)).body as BookingResponse;
+    await prisma.event.update({
+      where: { id: event.id },
+      data: { scheduleRevision: 1 },
+    });
+    jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(event.startsAt.getTime() - 12 * 3600000);
+    await cancel(first.reservation.id).expect(200);
+    const second = (await book().expect(201)).body as BookingResponse;
+    await cancel(second.reservation.id).expect(409);
+    await expectCounts(2, 3);
+  });
+
+  it('cancellation releases capacity for only one competing new booking', async () => {
+    const { reservation } = (await book().expect(201)).body as BookingResponse;
+    const race = await Promise.all([
+      cancel(reservation.id).expect(200),
+      book(other),
+    ]);
+    expect([201, 409]).toContain(race[1].status);
+    if (race[1].status === 409) await book(other).expect(201);
+    await book(admin).expect(409);
+    expect(
+      await prisma.reservation.count({
+        where: { eventId: event.id, status: 'CONFIRMED' },
+      }),
+    ).toBe(1);
+    await expectCounts(2, 3);
+  });
+
+  it('cancelling after registration closes releases the place without reopening registration', async () => {
+    const { reservation } = (await book().expect(201)).body as BookingResponse;
+    await prisma.event.update({
+      where: { id: event.id },
+      data: { registrationClosesAt: new Date(Date.now() - 1000) },
+    });
+    await cancel(reservation.id).expect(200);
+    const response = await book().expect(409);
+    expect(response.body).toMatchObject({ code: 'REGISTRATION_CLOSED' });
+    await book(other).expect(409);
+    expect(
+      await prisma.reservation.count({
+        where: { eventId: event.id, status: 'CONFIRMED' },
+      }),
+    ).toBe(0);
+    await expectCounts(1, 2);
   });
 
   it('rechecks attendee verification after waiting for the lock', async () => {

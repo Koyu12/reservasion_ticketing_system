@@ -1,15 +1,20 @@
 import { Link, Navigate, useParams } from 'react-router'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, apiRequest } from '../../api'
 import { authClient } from '../../auth-client'
 import { authPath } from '../../return-to'
 import { formatWib } from '../../workshop-time'
 import { ErrorState, LoadingState } from '../RequestState'
 import './workshops.css'
-import type { ReservationDetailResponse } from './reservations'
+import type {
+  ReservationDetails,
+  ReservationDetailResponse,
+} from './reservations'
 
 export function BookingConfirmation() {
   const { id } = useParams()
+  const [viewedAt] = useState(Date.now)
   const {
     data: session,
     isPending,
@@ -87,6 +92,15 @@ export function BookingConfirmation() {
           ? 'This booking no longer reserves a place.'
           : 'Your booking is confirmed. Keep this reference for your records.'}
       </p>
+      {reservation.cancelledAt && (
+        <p role="status">
+          Cancelled on{' '}
+          <time dateTime={reservation.cancelledAt}>
+            {formatWib(reservation.cancelledAt)}
+          </time>
+          .
+        </p>
+      )}
       <div className="booking-reference">
         <span>Booking reference</span>
         <strong>{reservation.bookingReference}</strong>
@@ -142,13 +156,33 @@ export function BookingConfirmation() {
       <h2>
         {cancelled ? 'Questions about your booking?' : 'Before your workshop'}
       </h2>
+      {!cancelled && (
+        <p>
+          {reservation.affectedByChange
+            ? 'Because the schedule or venue changed after you booked, you may cancel before the revised start time.'
+            : 'The standard cancellation policy allows cancellation more than 24 hours before the workshop starts.'}
+        </p>
+      )}
+      {!cancelled && (
+        <CancellationAction
+          key={`${session.user.id}:${reservation.id}`}
+          reservation={reservation}
+          userId={session.user.id}
+        />
+      )}
+      {reservation.status === 'CANCELLED' &&
+        event.status === 'PUBLISHED' &&
+        viewedAt < new Date(event.startsAt).getTime() && (
+          <p>
+            <Link to={`/events/${event.id}`}>
+              Check availability and book again
+            </Link>
+            . A new booking receives a new reference and follows the current
+            booking and cancellation rules.
+          </p>
+        )}
       <p>
-        {reservation.affectedByChange
-          ? 'Because the schedule or venue changed after you booked, you may request cancellation before the revised start time.'
-          : 'The standard cancellation policy allows cancellation more than 24 hours before the workshop starts.'}
-      </p>
-      <p>
-        For questions or cancellation requests, email{' '}
+        For questions or late cancellation requests, email{' '}
         <a href={`mailto:${organizerContactEmail}`}>{organizerContactEmail}</a>{' '}
         and include your booking reference.
       </p>
@@ -163,5 +197,121 @@ export function BookingConfirmation() {
         <Link to="/events">Browse workshops</Link>
       </p>
     </article>
+  )
+}
+
+function CancellationAction({
+  reservation,
+  userId,
+}: {
+  reservation: ReservationDetails
+  userId: string
+}) {
+  const client = useQueryClient()
+  const [confirming, setConfirming] = useState(false)
+  const [now, setNow] = useState(Date.now)
+  const deadline = new Date(reservation.cancellationClosesAt).getTime()
+  useEffect(() => {
+    if (now >= deadline) return
+    const delay = Math.min(Math.max(deadline - Date.now(), 1), 2147483647)
+    const timer = window.setTimeout(() => setNow(Date.now()), delay)
+    return () => window.clearTimeout(timer)
+  }, [deadline, now])
+
+  const cancellation = useMutation({
+    mutationFn: async () => {
+      const result = await apiRequest<{
+        reservation: Pick<ReservationDetails, 'id' | 'status' | 'cancelledAt'>
+      }>(`/reservations/${reservation.id}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      })
+      if (!result)
+        throw new Error(
+          'Unable to confirm cancellation. Check your reservation before trying again.',
+        )
+      return result
+    },
+    onSettled: async () => {
+      setConfirming(false)
+      await Promise.all([
+        client.invalidateQueries({
+          queryKey: ['reservation', userId, reservation.id],
+        }),
+        client.invalidateQueries({ queryKey: ['reservations', userId] }),
+        client.invalidateQueries({
+          queryKey: ['public-event', reservation.eventId],
+        }),
+        client.invalidateQueries({ queryKey: ['public-events'] }),
+        client.invalidateQueries({
+          queryKey: ['admin-event', reservation.eventId],
+        }),
+        client.invalidateQueries({ queryKey: ['admin-events'] }),
+      ])
+    },
+  })
+  const closed =
+    now >= deadline ||
+    (cancellation.error instanceof ApiError &&
+      cancellation.error.code === 'CANCELLATION_CLOSED')
+
+  return (
+    <section aria-label="Cancel reservation">
+      {cancellation.error && (
+        <ErrorState message={cancellation.error.message} />
+      )}
+      {cancellation.error instanceof ApiError &&
+        cancellation.error.status === 401 && (
+          <p>
+            <Link
+              to={authPath(
+                '/login',
+                `/reservations/${reservation.id}/confirmation`,
+              )}
+            >
+              Sign in again
+            </Link>{' '}
+            to manage your reservation.
+          </p>
+        )}
+      {closed ? (
+        <p>
+          Self-service cancellation has closed. Contact the organizer below and
+          include your booking reference.
+        </p>
+      ) : confirming ? (
+        <>
+          <p>
+            Cancel this reservation? Your place will be released. Booking again
+            depends on availability and the registration deadline.
+          </p>
+          <button
+            type="button"
+            disabled={cancellation.isPending}
+            onClick={() => setConfirming(false)}
+          >
+            Keep reservation
+          </button>{' '}
+          <button
+            type="button"
+            disabled={cancellation.isPending}
+            onClick={() => cancellation.mutate()}
+          >
+            Confirm cancellation
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          disabled={cancellation.isPending}
+          onClick={() => setConfirming(true)}
+        >
+          Cancel reservation
+        </button>
+      )}
+      {cancellation.isPending && (
+        <p role="status">Cancelling your reservation. Please wait.</p>
+      )}
+    </section>
   )
 }
