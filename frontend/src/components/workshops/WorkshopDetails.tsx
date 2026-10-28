@@ -6,6 +6,7 @@ import { ErrorState, LoadingState } from '../RequestState'
 import { availabilityLabels, publicEventRequest } from './public-workshops'
 import type { PublicWorkshopDetail } from './public-workshops'
 import './workshops.css'
+import { BookingAction } from './BookingAction'
 
 export function WorkshopDetails() {
   const { id } = useParams()
@@ -128,6 +129,7 @@ export function WorkshopDetails() {
             For questions and late cancellation requests, email{' '}
             <a href={`mailto:${email}`}>{email}</a>.
           </p>
+          <BookingAction key={event.id} event={event} />
         </>
       )}
     </article>

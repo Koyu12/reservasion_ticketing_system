@@ -11,6 +11,8 @@ import { WorkshopList } from './components/admin/WorkshopList'
 import { WorkshopEditor } from './components/admin/WorkshopEditor'
 import { WorkshopDiscovery } from './components/workshops/WorkshopDiscovery'
 import { WorkshopDetails } from './components/workshops/WorkshopDetails'
+import { BookingConfirmation } from './components/workshops/BookingConfirmation'
+import { MyReservations } from './components/workshops/MyReservations'
 
 export default function App() {
   const {
@@ -88,6 +90,10 @@ export default function App() {
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/events/:id" element={<WorkshopDetails />} />
           <Route
+            path="/reservations/:id/confirmation"
+            element={<BookingConfirmation />}
+          />
+          <Route
             path="/login"
             element={<AuthForm key="login" mode="login" />}
           />
@@ -95,7 +101,7 @@ export default function App() {
             path="/register"
             element={<AuthForm key="register" mode="register" />}
           />
-          <Route path="/reservations" element={<h1>My reservations</h1>} />
+          <Route path="/reservations" element={<MyReservations />} />
           <Route
             path="/admin/events"
             element={

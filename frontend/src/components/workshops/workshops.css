@@ -7,6 +7,28 @@
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
+.workshop-booking {
+  margin-top: 2rem;
+  border-top: 1px solid #c5ced7;
+}
+.booking-confirmation {
+  max-width: 48rem;
+}
+.booking-reference {
+  margin: 2rem 0;
+  padding: 1.25rem 0;
+  border-block: 1px solid #c5ced7;
+}
+.booking-reference span,
+.booking-reference strong {
+  display: block;
+}
+.booking-reference strong {
+  margin-top: 0.5rem;
+  font-family: ui-monospace, monospace;
+  font-size: clamp(1rem, 4vw, 1.5rem);
+  overflow-wrap: anywhere;
+}
 .public-workshops h1 {
   margin: 1.5rem 0 0.5rem;
   font-size: 2rem;
@@ -100,6 +122,26 @@
   list-style: none;
   padding: 0;
   margin: 1.5rem 0;
+}
+.reservation-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 2rem;
+}
+.reservation-list li {
+  padding: 1.5rem 0;
+  border-bottom: 1px solid #c5ced7;
+}
+.reservation-list h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.15rem;
+}
+.reservation-list p {
+  margin: 0.5rem 0;
+}
+.reservation-reference {
+  font-family: ui-monospace, monospace;
+  overflow-wrap: anywhere;
 }
 .discovery-list li {
   display: flex;

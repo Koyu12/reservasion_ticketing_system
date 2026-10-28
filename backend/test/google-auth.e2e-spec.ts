@@ -24,6 +24,7 @@ describe('Google OAuth callback and account linking (PostgreSQL)', () => {
   let stateIdentifiers: string[];
   let claims: Record<string, unknown>;
   let googleFetch: jest.SpiedFunction<typeof fetch>;
+  let previousContactEmail: string | undefined;
   const origin = 'http://localhost:5173';
   const password = 'Test-password-12345!';
   const clientId = 'test-google-client';
@@ -42,6 +43,7 @@ describe('Google OAuth callback and account linking (PostgreSQL)', () => {
       FRONTEND_URL: origin,
       GOOGLE_CLIENT_ID: clientId,
       GOOGLE_CLIENT_SECRET: 'dummy-google-secret',
+      ORGANIZER_CONTACT_EMAIL: 'organizer@example.invalid',
     };
     const previous: Record<string, string | undefined> = {};
     try {
@@ -69,6 +71,8 @@ describe('Google OAuth callback and account linking (PostgreSQL)', () => {
   });
 
   beforeEach(() => {
+    previousContactEmail = process.env.ORGANIZER_CONTACT_EMAIL;
+    process.env.ORGANIZER_CONTACT_EMAIL = 'organizer@example.invalid';
     email = `google-test-${randomUUID()}@example.invalid`;
     otherEmail = `other-${email}`;
     subject = randomUUID();
@@ -137,7 +141,15 @@ describe('Google OAuth callback and account linking (PostgreSQL)', () => {
 
   afterEach(async () => {
     jest.restoreAllMocks();
+    if (previousContactEmail === undefined)
+      delete process.env.ORGANIZER_CONTACT_EMAIL;
+    else process.env.ORGANIZER_CONTACT_EMAIL = previousContactEmail;
     if (prisma && email) {
+      const event = { createdBy: { email: { in: [email, otherEmail] } } };
+      await prisma.emailJob.deleteMany({ where: { reservation: { event } } });
+      await prisma.reservation.deleteMany({ where: { event } });
+      await prisma.eventChange.deleteMany({ where: { event } });
+      await prisma.event.deleteMany({ where: event });
       await prisma.verification.deleteMany({
         where: { identifier: { in: stateIdentifiers } },
       });
@@ -231,6 +243,40 @@ describe('Google OAuth callback and account linking (PostgreSQL)', () => {
 
   it('verified_google_links_existing_user and both sign-in methods retain the same identity', async () => {
     const existing = await localUser();
+    const event = await prisma.event.create({
+      data: {
+        createdById: existing.id,
+        title: 'Existing booking workshop',
+        description: 'Test workshop',
+        venueName: 'Hall',
+        venueAddress: '10 Example Road',
+        capacity: 5,
+        status: 'PUBLISHED',
+        startsAt: new Date(Date.now() + 3 * 86400000),
+        endsAt: new Date(Date.now() + 3 * 86400000 + 3600000),
+        registrationClosesAt: new Date(Date.now() + 2 * 86400000),
+      },
+    });
+    const old = await prisma.reservation.create({
+      data: {
+        eventId: event.id,
+        userId: existing.id,
+        bookingReference: randomUUID(),
+        bookedRevision: 0,
+        status: 'CANCELLED',
+        cancelledAt: new Date(),
+        cancelledById: existing.id,
+        cancellationSource: 'SELF_SERVICE',
+      },
+    });
+    const active = await prisma.reservation.create({
+      data: {
+        eventId: event.id,
+        userId: existing.id,
+        bookingReference: randomUUID(),
+        bookedRevision: 0,
+      },
+    });
     const response = await completeGoogle();
     expect(response.headers.location).toBe(`${origin}/events`);
     const user = await prisma.user.findUniqueOrThrow({
@@ -251,6 +297,53 @@ describe('Google OAuth callback and account linking (PostgreSQL)', () => {
       .set('Cookie', cookies(response))
       .expect(200);
     expect(session.body).toMatchObject({ user: { id: existing.id } });
+    type Listed = {
+      current: { id: string; bookingReference: string }[];
+      history: { id: string; bookingReference: string }[];
+    };
+    const passwordList = await request(app.getHttpServer())
+      .get('/api/reservations')
+      .set('Cookie', cookies(login))
+      .expect(200);
+    const googleList = await request(app.getHttpServer())
+      .get('/api/reservations')
+      .set('Cookie', cookies(response))
+      .expect(200);
+    expect(googleList.body).toEqual(passwordList.body);
+    const reservations = googleList.body as Listed;
+    expect(
+      reservations.current.map((booking) => [
+        booking.id,
+        booking.bookingReference,
+      ]),
+    ).toEqual([[active.id, active.bookingReference]]);
+    expect(
+      reservations.history.map((booking) => [
+        booking.id,
+        booking.bookingReference,
+      ]),
+    ).toEqual([[old.id, old.bookingReference]]);
+    for (const booking of [old, active]) {
+      const detail = await request(app.getHttpServer())
+        .get(`/api/reservations/${booking.id}`)
+        .set('Cookie', cookies(response))
+        .expect(200);
+      expect(detail.body).toMatchObject({
+        reservation: {
+          id: booking.id,
+          bookingReference: booking.bookingReference,
+        },
+      });
+    }
+    const stranger = await request(app.getHttpServer())
+      .post('/api/auth/sign-up/email')
+      .set('Origin', origin)
+      .send({ name: 'Other attendee', email: otherEmail, password })
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(`/api/reservations/${active.id}`)
+      .set('Cookie', cookies(stranger))
+      .expect(404);
   });
 
   it('unverified_identity_is_not_implicitly_linked when the local account is unverified', async () => {
