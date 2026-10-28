@@ -12,7 +12,8 @@
 
 ## How to Use This Tracker
 
-- All tasks start unchecked. The existing backend starter, installed Prisma packages, and completed design documents do not mean an application feature is complete.
+- Checkboxes track verified completion. The existing backend starter, installed packages, and completed design documents do not mean an application feature is complete.
+- Keep updates to completion, concise blockers, agreed scope changes, and necessary corrections. Keep approval dates and conversation summaries out of this checklist; selected versions awaiting installation and technical decisions belong in the relevant `ARCHITECTURE.md` section. Installed versions remain in package manifests and lockfiles.
 - Check a task only after its deliverable and focused checks pass. If external credentials or a decision are missing, leave it unchecked and record the blocker beneath that task.
 - Follow dependencies. A pending decision does not prevent unrelated tasks from progressing.
 - For each application feature, settle its route/payload/Zod/error contract before implementing the controller and consuming it in the frontend, as the architecture requires. Record the contract in its schemas/types/tests rather than creating another planning document.
@@ -37,7 +38,7 @@
 
 ## Implementation Areas
 
-These are target locations; the move has not happened yet. Create files only as the owning task needs them.
+The backend starter is already under `backend/`; P1-02 still tracks the remaining layout checks. Other locations are targets; create files only as the owning task needs them.
 
 | Area | Target location / responsibility |
 | --- | --- |
@@ -45,7 +46,8 @@ These are target locations; the move has not happened yet. Create files only as 
 | Authentication | `backend/src/auth/`; Better Auth integration, session access, verification/role guards. |
 | Events | `backend/src/events/`; publishing, discovery, capacity/deadlines, changes, cancellation. |
 | Reservations | `backend/src/reservations/`; booking, ownership, personal/admin cancellation, history. |
-| Notifications | `backend/src/notifications/`; provider delivery function, transactional enqueueing, sender, failed-email operations. |
+| Email delivery | `backend/src/email/`; shared provider delivery function for authentication and business messages. |
+| Notifications | `backend/src/notifications/`; transactional enqueueing, sender, failed-email operations. |
 | Prisma | `backend/prisma/` and a shared client provider under `backend/src/prisma/`; approved models, migrations, and connection lifecycle. |
 | Backend verification | Existing Jest unit/service tests near their feature and Supertest/PostgreSQL integration tests under `backend/test/`. |
 | Frontend | `frontend/src/`; application/router/auth/API setup and feature-local event, reservation, and admin components. |
@@ -77,17 +79,19 @@ Google client credentials and allowed callback URLs are an external prerequisite
 
 **Depends on:** None. **Area:** Backend/frontend manifests, existing TypeScript configuration, Better Auth integration choices.
 
-- [ ] Resolve D1 using current primary documentation and the installed package/lockfile state. Select compatible versions for the already chosen libraries, including the NestJS Better Auth integration and later static serving; retain NestJS 11 and Prisma 7.
-- [ ] Present any concrete additions or changes not already authorized. Record the approved package/runtime choices and Better Auth configuration here before dependent installation/generation work.
+- [x] Resolve D1 using current primary documentation and the installed package/lockfile state. Select compatible versions for the already chosen libraries, including the NestJS Better Auth integration and later static serving; retain NestJS 11 and Prisma 7.
+- [x] Present any concrete additions or changes not already authorized. Record selected package/runtime choices and Better Auth configuration in the relevant `ARCHITECTURE.md` section before dependent installation/generation work.
 
 **Done when:** Required versions, runtime/module compatibility, and approvals are recorded; no major upgrade or additional framework is assumed.
+
+Selected setup: [Runtime and Dependency Choices](ARCHITECTURE.md#runtime-and-dependency-choices).
 
 ### P1-02 — Move the existing backend into its target folder
 
 **Depends on:** None. **Area:** Existing `src/`, `test/`, Prisma/configuration, manifests, ignore rules, and existing command documentation.
 
-- [ ] Move the existing backend into `backend/`, preserving source, tests, lockfile, ignored configuration, and intended database connection. Make the moved Prisma configuration discoverable; update relative schema/client/migration paths and ignore rules.
-- [ ] Update the existing README and applicable command/path instructions. Check that the moved starter builds and its existing tests still pass from the new directory.
+- [X] Move the existing backend into `backend/`, preserving source, tests, lockfile, ignored configuration, and intended database connection. Make the moved Prisma configuration discoverable; update relative schema/client/migration paths and ignore rules.
+- [X] Update the existing README and applicable command/path instructions. Check that the moved starter builds and its existing tests still pass from the new directory.
 
 **Done when:** NestJS and Prisma paths resolve from `backend/`; secrets remain ignored; no business models or features are claimed complete.
 
@@ -95,8 +99,8 @@ Google client credentials and allowed callback URLs are an external prerequisite
 
 **Depends on:** P1-01, P1-02. **Area:** `frontend/` Vite/React setup, application router, query client, and API request functions.
 
-- [ ] Add the approved React/TypeScript/Vite application with React Router, TanStack Query, and native `fetch`. Configure a local `/api` proxy to NestJS; frontend environment values contain only public configuration.
-- [ ] Establish the public/attendee/admin route structure and shared loading/error presentation needed by the actual feature pages. Verify development startup and a production frontend build.
+- [X] Add the approved React/TypeScript/Vite application with React Router, TanStack Query, and native `fetch`. Configure a local `/api` proxy to NestJS; frontend environment values contain only public configuration.
+- [X] Establish the public/attendee/admin route structure and shared loading/error presentation needed by the actual feature pages. Verify development startup and a production frontend build.
 
 **Done when:** The frontend runs beside NestJS and requests `/api` through its own development origin; feature pages and authentication are still pending their tasks.
 
@@ -104,9 +108,9 @@ Google client credentials and allowed callback URLs are an external prerequisite
 
 **Depends on:** P1-01, P1-02; D2 for applying/checking migrations. **Area:** Prisma schema, generated authentication models, migrations, and isolated database verification.
 
-- [ ] Confirm D2 without printing connection secrets. Prepare and review the eight models, enums, timestamp/identifier types, foreign keys, and indexes from `DATABASE.md`, including the chosen Better Auth-generated schema.
-- [ ] Include native SQL checks and the confirmed-reservation partial unique index in reviewed migrations, with schema comments identifying native constraints. Apply only to the intended authorized database.
-- [ ] Check clean migration application and inspect the applied types, foreign keys, indexes, and native checks on the isolated database. Execute the constraint regression cases in P1-05 once its test setup is ready.
+- [X] Confirm D2 without printing connection secrets. Prepare and review the eight models, enums, timestamp/identifier types, foreign keys, and indexes from `DATABASE.md`, including the chosen Better Auth-generated schema.
+- [X] Include native SQL checks and the confirmed-reservation partial unique index in reviewed migrations, with schema comments identifying native constraints. Apply only to the intended authorized database.
+- [X] Check clean migration application and inspect the applied types, foreign keys, indexes, and native checks on the isolated database. Execute the constraint regression cases in P1-05 once its test setup is ready.
 
 **Done when:** A clean database built from migrations has all eight models and native constraints. No preview-feature switch or unreviewed schema deviation is introduced.
 
@@ -114,46 +118,54 @@ Google client credentials and allowed callback URLs are an external prerequisite
 
 **Depends on:** P1-04. **Area:** Shared Prisma provider/module and existing Jest/Supertest integration configuration.
 
-- [ ] Reuse one Prisma client with the PostgreSQL adapter and application lifecycle handling; use the same intended connection configuration for runtime and CLI work.
-- [ ] Configure isolated PostgreSQL integration checks with explicit test connection selection. Refuse destructive test setup against the development/production target. Verify a real database operation and clean application shutdown.
-- [ ] Against that test database, verify a second confirmed booking fails, multiple cancelled rows plus a rebooking succeed, null required cancellation reasons fail, invalid delivery metadata fails, and referenced history cannot cascade away.
+- [X] Reuse one Prisma client with the PostgreSQL adapter and application lifecycle handling; use the same intended connection configuration for runtime and CLI work.
+- [X] Configure isolated PostgreSQL integration checks with explicit test connection selection. Refuse destructive test setup against the development/production target. Verify a real database operation and clean application shutdown.
+- [X] Against that test database, verify a second confirmed booking fails, multiple cancelled rows plus a rebooking succeed, null required cancellation reasons fail, invalid delivery metadata fails, and referenced history cannot cascade away.
 
 **Done when:** Feature services can use Prisma and its transaction client; database checks use PostgreSQL without Docker or an in-memory substitute being added implicitly.
+
+`backend/test/database.e2e-spec.ts` checks explicit test-target selection, real Prisma transaction access/shutdown, all 15 native checks, booking uniqueness/rebooking, and restrictive business-history deletion. Run `npm --prefix backend run test:e2e -- --runInBand` with `TEST_DATABASE_URL` pointing at the migrated test database. Fixtures roll back after each test; the suite does not reset or migrate databases.
 
 ### P1-06 — Select and connect the email provider
 
 **Depends on:** P1-01, P1-02. **Area:** Notification provider delivery function and backend-only configuration.
 
 - [ ] Resolve D3: select the provider, confirm public-demo sending/domain restrictions and budget, and obtain sender/contact configuration through the user where required.
-- [ ] Implement one provider delivery function reusable by Better Auth callbacks and the later business sender. Keep credentials and sensitive links out of logs and the frontend; expose sanitized provider outcomes internally.
+- [X] Implement one provider delivery function reusable by Better Auth callbacks and the later business sender. Keep credentials and sensitive links out of logs and the frontend; expose sanitized provider outcomes internally.
 
 **Done when:** An authorized test message reaches the controlled test recipient, or a concrete external prerequisite is recorded and this task remains unchecked. No persistent authentication-email queue is created.
+
+D3 remains open for public-demo sender-domain readiness, budget, and organizer contact configuration. Delivery configuration and provider choices are recorded in `ARCHITECTURE.md`.
 
 ### P1-07 — Add email/password access and database sessions
 
 **Depends on:** P1-03, P1-05. **Area:** Authentication configuration/integration and registration/login/logout pages.
 
-- [ ] Configure Better Auth and its React client for registration, login, logout, and database-backed cookie sessions under `/api/auth/*`. Register attendee roles as server-owned fields from the first signup implementation.
-- [ ] Provide the account forms/session-aware navigation and backend session access. Retain origin protections and define application mutation CSRF checks; configure development base/callback origins.
-- [ ] Verify `register_as_attendee`, `login_restores_database_session`, `logout_ends_session`, and rejection of role injection. Check that auth-handler body parsing does not break later application JSON routes.
+- [X] Configure Better Auth and its React client for registration, login, logout, and database-backed cookie sessions under `/api/auth/*`. Register attendee roles as server-owned fields from the first signup implementation.
+- [X] Provide the account forms/session-aware navigation and backend session access. Retain origin protections and define application mutation CSRF checks; configure development base/callback origins.
+- [X] Verify `register_as_attendee`, `login_restores_database_session`, `logout_ends_session`, and rejection of role injection. Check that auth-handler body parsing does not break later application JSON routes.
 
 **Done when:** Email/password users can enter and leave a session through the real UI/API. Verification eligibility is completed in P1-08, not silently bypassed for later booking.
+
+Implementation and 12 PostgreSQL-backed auth HTTP checks pass.
 
 ### P1-08 — Verify email before booking
 
 **Depends on:** P1-06, P1-07. **Area:** Better Auth verification callbacks, verification/resend screen, and backend verified-email guard.
 
 - [ ] Send verification links directly through the provider; handle successful, invalid/expired, and resend flows using Better Auth. Permit anonymous browsing and enforce verification at the booking boundary.
-- [ ] Verify `unverified_user_cannot_book`, `verified_user_is_eligible`, and invalid/expired-link behavior without storing links in `EmailJob`. Keep the controlled credential/database test setup independent of real outbound email.
+- [X] Verify `unverified_user_cannot_book`, `verified_user_is_eligible`, and invalid/expired-link behavior without storing links in `EmailJob`. Keep the controlled credential/database test setup independent of real outbound email.
 
 **Done when:** A fresh email/password attendee can verify and become booking-eligible; resend behavior and errors are understandable.
+
+Pending: attach the exported verification guard to reservation creation when the real booking endpoint is implemented. Its test-only route checks pass.
 
 ### P1-09 — Add password recovery
 
 **Depends on:** P1-06, P1-07. **Area:** Better Auth recovery callbacks and request/reset-password pages.
 
-- [ ] Implement the direct-provider recovery flow with Better Auth-owned token validation and safe user-facing responses; preserve its supported session-revocation behavior.
-- [ ] Verify a valid reset, expired/invalid links, and that an old password no longer signs in after a successful reset. Confirm recovery secrets do not enter business jobs or logs.
+- [X] Implement the direct-provider recovery flow with Better Auth-owned token validation and safe user-facing responses; preserve its supported session-revocation behavior.
+- [X] Verify a valid reset, expired/invalid links, and that an old password no longer signs in after a successful reset. Confirm recovery secrets do not enter business jobs or logs.
 
 **Done when:** A credential user can recover access through the UI and controlled email flow.
 
@@ -161,18 +173,20 @@ Google client credentials and allowed callback URLs are an external prerequisite
 
 **Depends on:** P1-07, P1-08; valid Google client configuration. **Area:** Better Auth Google configuration and sign-in UI.
 
-- [ ] Configure the approved Google provider and callback URLs; support a new Google attendee without an extra verification email when Google supplies a trusted verified address.
-- [ ] Enforce automatic linking only for the same verified email on both identities. Preserve the existing user/role/history, and keep unverified/different-email cases out of automatic linking.
-- [ ] Verify `verified_google_links_existing_user` and `unverified_identity_is_not_implicitly_linked`. At P2-03, extend the identity check to existing reservation history. Manually check a real controlled Google callback before marking this complete.
+- [X] Configure the approved Google provider and callback URLs; support a new Google attendee without an extra verification email when Google supplies a trusted verified address.
+- [X] Enforce automatic linking only for the same verified email on both identities. Preserve the existing user/role/history, and keep unverified/different-email cases out of automatic linking.
+- [X] Verify `verified_google_links_existing_user` and `unverified_identity_is_not_implicitly_linked`. At P2-03, extend the identity check to existing reservation history. Manually check a real controlled Google callback before marking this complete.
 
 **Done when:** Both sign-in methods reach the same eligible identity where the policy permits, and Google cannot grant an admin role.
+
+Reservation-history checks remain scheduled for P2-03.
 
 ### P1-11 — Protect admin operations and provision private access
 
 **Depends on:** P1-07, P1-08. **Area:** Role guards, protected admin routes, private admin provisioning, and frontend admin navigation.
 
-- [ ] Provision the authorized private admin through a controlled setup path, with no public promotion endpoint or exposed admin credentials. Enforce current server-side admin permission and attendee ownership checks as applicable.
-- [ ] Verify anonymous and attendee rejection on admin operations, role/profile injection rejection, and admin access. Preserve admin eligibility for the ordinary attendee flow without granting booking-rule bypasses.
+- [X] Provision the authorized private admin through a controlled setup path, with no public promotion endpoint or exposed admin credentials. Enforce current server-side admin permission and attendee ownership checks as applicable.
+- [X] Verify anonymous and attendee rejection on admin operations, role/profile injection rejection, and admin access. Preserve admin eligibility for the ordinary attendee flow without granting booking-rule bypasses.
 
 **Done when:** Hiding/showing navigation reflects permissions, and direct HTTP calls still enforce them. Reuse this access setup for the later demo seed.
 
@@ -340,7 +354,7 @@ Google client credentials and allowed callback URLs are an external prerequisite
 
 ## Working Commands After the Folder Move
 
-Run only the commands relevant to the active task, with its intended environment loaded. These are future commands for the planned layout; the current root-level commands stay in use until P1-02 is complete.
+Run only the commands relevant to the active task, with its intended environment loaded. Backend commands apply to the existing `backend/` directory. Frontend commands become available after P1-03 establishes `frontend/`.
 
 | Purpose | Command |
 | --- | --- |
@@ -357,4 +371,4 @@ The starter's `lint` script uses `--fix`; it rewrites files. Use the task-approp
 
 ## Current Progress
 
-The product, architecture, database design, and this tracker are documented. Application tasks P1-01 through P3-11 remain unimplemented and unchecked. Start with dependency/runtime decisions or the independent backend folder move; do not treat the entire tracker as an instruction to execute every task at once.
+P1-01 is complete. P1-02 remains unchecked: the backend folder exists and its build and Prisma config discovery passed, but the remaining preservation, ignore-rule, documentation, and starter-test checks are pending. P1-03 through P3-11 remain pending.

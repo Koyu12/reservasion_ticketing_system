@@ -1,0 +1,108 @@
+import { Link, Navigate, Route, Routes } from 'react-router'
+import { useState } from 'react'
+import { authClient } from './auth-client'
+import { AuthForm } from './components/AuthForm'
+import { ErrorState } from './components/RequestState'
+import { VerifyEmail } from './components/VerifyEmail'
+import { ForgotPassword } from './components/ForgotPassword'
+import { ResetPassword } from './components/ResetPassword'
+import { RequireAdmin } from './components/RequireAdmin'
+
+export default function App() {
+  const {
+    data: session,
+    isPending,
+    error: sessionError,
+    refetch,
+  } = authClient.useSession()
+  const [signingOut, setSigningOut] = useState(false)
+  const [logoutError, setLogoutError] = useState('')
+
+  async function logout() {
+    setSigningOut(true)
+    setLogoutError('')
+    try {
+      const result = await authClient.signOut()
+      if (result.error) setLogoutError('Unable to sign out. Please try again.')
+      else await refetch()
+    } catch {
+      setLogoutError('Unable to connect. Please try again.')
+    } finally {
+      setSigningOut(false)
+    }
+  }
+
+  return (
+    <>
+      <nav aria-label="Main navigation">
+        <Link to="/events">Workshops</Link>{' '}
+        {isPending ? (
+          <span role="status">Checking session…</span>
+        ) : session ? (
+          <>
+            <span>Signed in as {session.user.name}</span>{' '}
+            {!session.user.emailVerified && (
+              <>
+                <Link to="/verify-email">Verify email</Link>{' '}
+              </>
+            )}
+            <Link to="/reservations">My reservations</Link>{' '}
+            {session.user.role === 'ADMIN' && (
+              <>
+                <Link to="/admin/events">Manage workshops</Link>{' '}
+              </>
+            )}
+            <button
+              type="button"
+              disabled={signingOut}
+              onClick={() => void logout()}
+            >
+              {signingOut ? 'Signing out…' : 'Sign out'}
+            </button>
+          </>
+        ) : !sessionError ? (
+          <>
+            <Link to="/login">Sign in</Link>{' '}
+            <Link to="/register">Register</Link>
+          </>
+        ) : null}
+      </nav>
+      {sessionError && (
+        <ErrorState
+          message="Unable to check your session."
+          onRetry={() => void refetch()}
+        />
+      )}
+      {logoutError && <ErrorState message={logoutError} />}
+
+      <main>
+        <Routes>
+          <Route path="/" element={<Navigate to="/events" replace />} />
+          <Route path="/events" element={<h1>Workshops</h1>} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/events/:id" element={<h1>Workshop details</h1>} />
+          <Route
+            path="/login"
+            element={<AuthForm key="login" mode="login" />}
+          />
+          <Route
+            path="/register"
+            element={<AuthForm key="register" mode="register" />}
+          />
+          <Route path="/reservations" element={<h1>My reservations</h1>} />
+          <Route
+            path="/admin/events"
+            element={
+              <RequireAdmin>
+                <h1>Manage workshops</h1>
+              </RequireAdmin>
+            }
+          />
+          <Route path="*" element={<h1>Page not found</h1>} />
+        </Routes>
+      </main>
+    </>
+  )
+}

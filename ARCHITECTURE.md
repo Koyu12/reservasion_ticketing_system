@@ -49,6 +49,38 @@ Move the current backend into `backend/` when implementing the layout. Adjust co
 
 Use the existing controller -> service -> Prisma convention. Additional abstraction layers require a concrete need in an implemented feature.
 
+### Runtime and Dependency Choices
+
+Use Node.js 24 for development and deployment. Retain NestJS 11, Prisma 7, the Express adapter, and the installed TypeScript/Jest tooling. Installed versions belong in `backend/package.json` and its lockfile.
+
+The following selected versions are approved for installation in their owning tasks:
+
+| Package | Selected version | Owning task |
+| --- | --- | --- |
+| `@thallesp/nestjs-better-auth` | 2.8.0 | P1-07 |
+| `zod` (direct dependency) | 4.6.7 | P1-12 |
+| `auth` (development dependency) | 1.7.13 | P1-04 |
+| `@nestjs/serve-static` | 5.0.5 | P3-10 |
+| `react`, `react-dom` | 19.3.1 each | P1-03 |
+| `react-router` | 8.5.0 | P1-03 |
+| `@tanstack/react-query` | 5.105.0 | P1-03 |
+| `vite`, `@vitejs/plugin-react` (development dependencies) | 8.3.5 / 6.1.2 | P1-03 |
+| `@types/react`, `@types/react-dom` (development dependencies) | 19.3.0 each | P1-03 |
+
+Keep these choices in the corresponding manifests and lockfiles once installed. Review replacements before changing selected versions.
+
+- Use backend ESM with `"type": "module"`, `module: nodenext`, `moduleResolution: nodenext`, and `target: ES2023`, following the [Prisma 7 NestJS guide](https://www.prisma.io/docs/guides/v7/frameworks/nestjs). Relative backend imports use `.js` extensions. The frontend uses Vite's ESM/bundler configuration and React Router's declarative mode.
+- Keep `backend/prisma7.config.ts`; the installed Prisma configuration loader discovers it. Retain `prisma-client`, set `moduleFormat = "esm"`, and generate into `../src/generated/prisma`. The application build includes `src` with that directory as its root, preserving the `dist/main.js` entry point. Business models and migrations retain their separate review.
+- `backend/src/prisma.service.ts` owns the application Prisma client and PostgreSQL adapter. `PrismaModule` registers and exports it for feature-module injection; import the module instead of registering another PrismaService provider. The service loads backend environment configuration, rejects a missing `DATABASE_URL`, and disconnects on module destruction. Bootstrap enables shutdown hooks. Connections remain lazy until a database operation; configuring the provider does not verify database connectivity. The standalone `backend/lib/` examples are unmounted drafts outside the application build; Better Auth's runtime integration must receive the shared injected service rather than create a second client.
+- Keep Jest and ts-jest, configured for ESM transforms and `.ts` module handling. Test scripts invoke Node with `--experimental-vm-modules`; Jest maps relative `.js` imports to TypeScript sources. The starter HTTP test overrides PrismaService so it does not require database credentials or make database requests.
+- Use the pinned local `auth` CLI from `backend/` with explicit configuration and output paths: `npm exec -- auth generate --config ./src/auth/auth.ts --adapter prisma --dialect postgresql --output ./prisma/schema.prisma`. Review the generated authentication models against `DATABASE.md` before preparing Prisma migrations.
+- Integrate Better Auth under `/api/auth` through the community-maintained NestJS wrapper. Reuse the shared Prisma client with `provider: "postgresql"`; the existing `better-auth/adapters/prisma` export supplies the adapter. Use database sessions and the `better-auth/react` client.
+- `AppAuthModule` uses the wrapper's async registration to inject the shared PrismaService. Email/password access is enabled; session cookie caching is disabled so revocation is checked against PostgreSQL. Public registration explicitly rejects supplied roles, and profile updates retain Better Auth's `input: false` protection. `GET /api/session` returns only the authenticated user's public fields. The frontend uses one `better-auth/react` client through Vite's same-origin proxy, account forms, and session-aware navigation; it does not store tokens in browser storage.
+- `BETTER_AUTH_URL` and `FRONTEND_URL` select exact trusted origins, with local defaults `http://localhost:3000` and `http://localhost:5173`; both are required explicitly in production. Keep Better Auth's origin and CSRF protections enabled explicitly, including in tests. `ApplicationOriginGuard` also checks trusted Origin/Referer on cookie-authenticated application mutations; safe HTTP methods remain exempt. Keep the authentication wrapper's global session guard enabled and annotate public routes individually.
+- Disable NestJS body parsing at bootstrap and let the integration restore application JSON/form parsers. Keep its global authentication guard and explicitly allow anonymous routes; verification and application-role guards remain feature responsibilities. Check module loading and JSON request parsing during integration.
+- Make `User.role` server-owned through an additional field with default `ATTENDEE` and `input: false`. Use private application provisioning rather than adding the Better Auth admin plugin. Preserve matching verified-email linking, `requireLocalEmailVerified: true`, and disabled different-email linking without a trusted-provider bypass.
+- Supply environment-specific base URLs, trusted origins, Google credentials, and email callbacks in their owning tasks. Preserve origin protection and keep verification/recovery mail outside the business-notification queue.
+
 ## 3. Backend Modules and Boundaries
 
 | Module | Owns |
@@ -186,7 +218,11 @@ Skip confirmations for cancelled bookings/events and event-change notices supers
 
 Better Auth retains ownership of verification and recovery tokens, their expiry, and resend/recovery flows. Its delivery callbacks send through the selected provider using the application's email-delivery boundary. Authentication emails and sensitive links are excluded from the persistent `EmailJob` queue; the business-change/outbox atomicity above applies to booking and event operations.
 
-The provider, precise attempt limits, retry intervals, claim-expiry settings, provider timeouts, and provider-idempotency behavior remain integration decisions. Set them before implementing delivery processing. The application does not promise timely background processing while its host is stopped or asleep.
+Resend is the selected delivery provider. `backend/src/email/` exports a shared `EmailService` through `EmailModule`; Better Auth callbacks and the later notification sender will consume it. `send({ to, subject, text })` uses Node's built-in `fetch` with a 10-second timeout, returns the provider message ID, and reports sanitized failures without logging credentials, contents, or raw provider responses. Configuration is checked when sending, so starting the application does not send email or require provider access. No SDK dependency or automatic retry is introduced.
+
+Backend environment variables are `RESEND_API_KEY` and `EMAIL_FROM`; `EMAIL_TEST_TO` selects the controlled recipient only for explicit local smoke tests. The `resend.dev` test sender is limited to the account's own inbox. Public-demo sending requires a verified sender domain; domain readiness, budget, and organizer contact configuration remain open under D3.
+
+Precise attempt limits, retry intervals, claim-expiry settings, and provider-idempotency behavior remain integration decisions before implementing delivery processing. The initial provider timeout is 10 seconds; reconcile it with claim duration in D4. The application does not promise timely background processing while its host is stopped or asleep.
 
 ## 8. Development and Deployment
 

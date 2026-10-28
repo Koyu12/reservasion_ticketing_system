@@ -4,10 +4,223 @@
 // Get a free hosted Postgres database in seconds: `npx create-db`
 
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  ATTENDEE
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+}
+
+enum ReservationStatus {
+  CONFIRMED
+  CANCELLED
+}
+
+enum CancellationSource {
+  SELF_SERVICE
+  ADMIN
+  EVENT_CANCELLED
+}
+
+enum EmailJobType {
+  BOOKING_CONFIRMED
+  RESERVATION_CANCELLED
+  EVENT_CANCELLED
+  EVENT_CHANGED
+}
+
+enum EmailJobStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+model User {
+  id            String   @id
+  name          String   @db.Text
+  email         String   @unique @db.Text
+  emailVerified Boolean  @default(false)
+  image         String?  @db.Text
+  role          Role     @default(ATTENDEE)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  account                  Account[]
+  session                  Session[]
+  createdEvents            Event[]       @relation("EventCreator")
+  cancelledEvents          Event[]       @relation("EventCanceller")
+  reservation              Reservation[] @relation("ReservationOwner")
+  cancelledReservations    Reservation[] @relation("ReservationCanceller")
+  eventChange              EventChange[]
+  manuallyRetriedEmailJobs EmailJob[]
+}
+
+model Account {
+  id                    String    @id
+  userId                String    @db.Text
+  providerId            String    @db.Text
+  accountId             String    @db.Text
+  password              String?   @db.Text
+  accessToken           String?   @db.Text
+  refreshToken          String?   @db.Text
+  idToken               String?   @db.Text
+  scope                 String?   @db.Text
+  accessTokenExpiresAt  DateTime? @db.Timestamptz(3)
+  refreshTokenExpiresAt DateTime? @db.Timestamptz(3)
+  createdAt             DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+}
+
+model Session {
+  id        String   @id
+  userId    String   @db.Text
+  token     String   @unique @db.Text
+  expiresAt DateTime @db.Timestamptz(3)
+  ipAddress String?  @db.Text
+  userAgent String?  @db.Text
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id
+  identifier String   @db.Text
+  value      String   @db.Text
+  expiresAt  DateTime @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+
+  @@index([identifier])
+}
+
+model Event {
+  id                   String      @id @default(uuid()) @db.Uuid
+  createdById          String
+  title                String      @db.Text
+  description          String      @db.Text
+  venueName            String      @db.Text
+  venueAddress         String      @db.Text
+  startsAt             DateTime    @db.Timestamptz(3)
+  endsAt               DateTime    @db.Timestamptz(3)
+  registrationClosesAt DateTime    @db.Timestamptz(3)
+  capacity             Int
+  status               EventStatus @default(DRAFT)
+  scheduleRevision     Int         @default(0)
+  cancelledAt          DateTime?   @db.Timestamptz(3)
+  cancelledById        String?
+  cancellationReason   String?     @db.Text
+  createdAt            DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime    @default(now()) @updatedAt @db.Timestamptz(3)
+
+  createdBy    User          @relation("EventCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  cancelledBy  User?         @relation("EventCanceller", fields: [cancelledById], references: [id], onDelete: Restrict)
+  event        EventChange[]
+  reservationn Reservation[]
+
+  @@index([status, startsAt])
+}
+
+model EventChange {
+  id              String   @id @default(uuid()) @db.Uuid
+  eventId         String   @db.Uuid
+  revision        Int
+  oldStartsAt     DateTime @db.Timestamptz(3)
+  oldEndsAt       DateTime @db.Timestamptz(3)
+  newStartsAt     DateTime @db.Timestamptz(3)
+  newEndsAt       DateTime @db.Timestamptz(3)
+  oldVenueName    String   @db.Text
+  oldVenueAddress String   @db.Text
+  newVenueName    String   @db.Text
+  newVenueAddress String   @db.Text
+  changedById     String
+  reason          String   @db.Text
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  user  User  @relation(fields: [changedById], references: [id], onDelete: Restrict)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Restrict)
+
+  emailJob EmailJob[]
+
+  @@unique([eventId, revision])
+}
+
+model Reservation {
+  id                 String              @id @default(uuid()) @db.Uuid
+  eventId            String              @db.Uuid
+  userId             String
+  bookingReference   String              @unique @db.Text
+  status             ReservationStatus   @default(CONFIRMED)
+  bookedRevision     Int
+  cancelledAt        DateTime?           @db.Timestamptz(3)
+  cancelledById      String?
+  cancellationSource CancellationSource?
+  cancellationReason String?             @db.Text
+  createdAt          DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime            @default(now()) @updatedAt @db.Timestamptz(3)
+
+  attendee    User  @relation("ReservationOwner", fields: [userId], references: [id], onDelete: Restrict)
+  cancelledBy User? @relation("ReservationCanceller", fields: [cancelledById], references: [id], onDelete: Restrict)
+  event       Event @relation(fields: [eventId], references: [id], onDelete: Restrict)
+
+  emailJob EmailJob[]
+
+  @@index([userId, createdAt])
+  @@index([eventId, status])
+}
+
+model EmailJob {
+  id                     String         @id @default(uuid()) @db.Uuid
+  reservationId          String         @db.Uuid
+  eventChangeId          String?        @db.Uuid
+  type                   EmailJobType
+  recipientEmail         String         @db.Text
+  deduplicationKey       String         @unique @db.Text
+  status                 EmailJobStatus @default(PENDING)
+  attemptCount           Int            @default(0)
+  retryCycleAttemptCount Int            @default(0)
+  nextAttemptAt          DateTime?      @db.Timestamptz(3)
+  lastAttemptAt          DateTime?      @db.Timestamptz(3)
+  claimToken             String?        @db.Uuid
+  claimExpiresAt         DateTime?      @db.Timestamptz(3)
+  providerMessageId      String?        @db.Text
+  sentAt                 DateTime?      @db.Timestamptz(3)
+  lastError              String?        @db.Text
+  skippedAt              DateTime?      @db.Timestamptz(3)
+  skipReason             String?        @db.Text
+  lastManualRetryById    String?
+  lastManualRetryAt      DateTime?      @db.Timestamptz(3)
+  createdAt              DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime       @default(now()) @updatedAt @db.Timestamptz(3)
+
+  reservation       Reservation  @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  eventChange       EventChange? @relation(fields: [eventChangeId], references: [id], onDelete: Restrict)
+  lastManualRetryBy User?        @relation(fields: [lastManualRetryById], references: [id], onDelete: Restrict)
+
+  @@index([status, nextAttemptAt])
+  @@index([status, claimExpiresAt])
+  @@index([reservationId])
 }
