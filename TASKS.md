@@ -256,9 +256,11 @@ Browser checks and controlled real Google sign-in with existing reservations rem
 
 **Depends on:** P2-03. **Area:** Reservation cancellation operation and attendee controls.
 
-- [ ] Cancel an owned confirmed reservation under the event lock, enforce the more-than-24-hours rule or affected-revision exception, retain actor/time/source, and enqueue its cancellation notice atomically.
-- [ ] Allow a later eligible booking through the existing booking operation, creating a new reference/row at the latest revision. Show contact instructions when self-service cancellation is closed.
-- [ ] Verify just before, exactly at, and just after the 24-hour cutoff; a lock wait crossing the cutoff; revised-start boundaries; and `cancel_rebook_cancel_preserves_all_history`. Repeated cancellation must not release twice or enqueue another logical notice.
+- [X] Cancel an owned confirmed reservation under the event lock, enforce the more-than-24-hours rule or affected-revision exception, retain actor/time/source, and enqueue its cancellation notice atomically.
+- [X] Allow a later eligible booking through the existing booking operation, creating a new reference/row at the latest revision. Show contact instructions when self-service cancellation is closed.
+- [X] Verify just before, exactly at, and just after the 24-hour cutoff; a lock wait crossing the cutoff; revised-start boundaries; and `cancel_rebook_cancel_preserves_all_history`. Repeated cancellation must not release twice or enqueue another logical notice.
+
+Browser verification of cancellation confirmation, history, contact instructions, and rebooking remains pending: automatic approval review rejected Google Chrome Computer Use access. Automated PostgreSQL reservation checks, backend/frontend builds, and focused lint checks passed.
 
 **Done when:** Places are released correctly and only reopened to new bookings while registration is still open. Rebooking does not inherit an earlier booking's change exception.
 

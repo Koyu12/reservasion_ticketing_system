@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
   Post,
   Query,
@@ -16,6 +17,7 @@ import { ApplicationExceptionFilter } from '../common/application-exception.filt
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import {
   bookReservationSchema,
+  cancelReservationSchema,
   reservationIdSchema,
   reservationListQuerySchema,
 } from './reservations.schemas.js';
@@ -47,6 +49,18 @@ export class ReservationsController {
   ) {
     void query;
     return this.reservations.list(session.user.id);
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(200)
+  cancel(
+    @Param('id', new ZodValidationPipe(reservationIdSchema)) id: string,
+    @Body(new ZodValidationPipe(cancelReservationSchema))
+    body: Record<string, never>,
+    @Session() session: AttendeeSession,
+  ) {
+    void body;
+    return this.reservations.cancel(id, session.user.id);
   }
 
   @Get(':id')
