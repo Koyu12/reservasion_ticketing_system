@@ -9,6 +9,7 @@
   "scripts": {
     "build": "nest build",
     "admin:promote": "npm run build && node dist/auth/promote-admin.js",
+    "demo:seed": "npm run build && node dist/demo/seed-demo.js",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",

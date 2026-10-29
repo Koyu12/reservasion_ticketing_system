@@ -79,6 +79,10 @@ Google client credentials and allowed callback URLs are an external prerequisite
 
 **Depends on:** None. **Area:** Backend/frontend manifests, existing TypeScript configuration, Better Auth integration choices.
 
+
+
+
+
 - [x] Resolve D1 using current primary documentation and the installed package/lockfile state. Select compatible versions for the already chosen libraries, including the NestJS Better Auth integration and later static serving; retain NestJS 11 and Prisma 7.
 - [x] Present any concrete additions or changes not already authorized. Record selected package/runtime choices and Better Auth configuration in the relevant `ARCHITECTURE.md` section before dependent installation/generation work.
 
@@ -90,6 +94,10 @@ Selected setup: [Runtime and Dependency Choices](ARCHITECTURE.md#runtime-and-dep
 
 **Depends on:** None. **Area:** Existing `src/`, `test/`, Prisma/configuration, manifests, ignore rules, and existing command documentation.
 
+
+
+
+
 - [X] Move the existing backend into `backend/`, preserving source, tests, lockfile, ignored configuration, and intended database connection. Make the moved Prisma configuration discoverable; update relative schema/client/migration paths and ignore rules.
 - [X] Update the existing README and applicable command/path instructions. Check that the moved starter builds and its existing tests still pass from the new directory.
 
@@ -98,6 +106,10 @@ Selected setup: [Runtime and Dependency Choices](ARCHITECTURE.md#runtime-and-dep
 ### P1-03 — Establish the React application and navigation
 
 **Depends on:** P1-01, P1-02. **Area:** `frontend/` Vite/React setup, application router, query client, and API request functions.
+
+
+
+
 
 - [X] Add the approved React/TypeScript/Vite application with React Router, TanStack Query, and native `fetch`. Configure a local `/api` proxy to NestJS; frontend environment values contain only public configuration.
 - [X] Establish the public/attendee/admin route structure and shared loading/error presentation needed by the actual feature pages. Verify development startup and a production frontend build.
@@ -108,6 +120,10 @@ Selected setup: [Runtime and Dependency Choices](ARCHITECTURE.md#runtime-and-dep
 
 **Depends on:** P1-01, P1-02; D2 for applying/checking migrations. **Area:** Prisma schema, generated authentication models, migrations, and isolated database verification.
 
+
+
+
+
 - [X] Confirm D2 without printing connection secrets. Prepare and review the eight models, enums, timestamp/identifier types, foreign keys, and indexes from `DATABASE.md`, including the chosen Better Auth-generated schema.
 - [X] Include native SQL checks and the confirmed-reservation partial unique index in reviewed migrations, with schema comments identifying native constraints. Apply only to the intended authorized database.
 - [X] Check clean migration application and inspect the applied types, foreign keys, indexes, and native checks on the isolated database. Execute the constraint regression cases in P1-05 once its test setup is ready.
@@ -117,6 +133,10 @@ Selected setup: [Runtime and Dependency Choices](ARCHITECTURE.md#runtime-and-dep
 ### P1-05 — Connect Prisma and establish safe database checks
 
 **Depends on:** P1-04. **Area:** Shared Prisma provider/module and existing Jest/Supertest integration configuration.
+
+
+
+
 
 - [X] Reuse one Prisma client with the PostgreSQL adapter and application lifecycle handling; use the same intended connection configuration for runtime and CLI work.
 - [X] Configure isolated PostgreSQL integration checks with explicit test connection selection. Refuse destructive test setup against the development/production target. Verify a real database operation and clean application shutdown.
@@ -130,6 +150,10 @@ Selected setup: [Runtime and Dependency Choices](ARCHITECTURE.md#runtime-and-dep
 
 **Depends on:** P1-01, P1-02. **Area:** Notification provider delivery function and backend-only configuration.
 
+
+
+
+
 - [ ] Resolve D3: select the provider, confirm public-demo sending/domain restrictions and budget, and obtain sender/contact configuration through the user where required.
 - [X] Implement one provider delivery function reusable by Better Auth callbacks and the later business sender. Keep credentials and sensitive links out of logs and the frontend; expose sanitized provider outcomes internally.
 
@@ -140,6 +164,10 @@ D3 remains open for public-demo sender-domain readiness, budget, and organizer c
 ### P1-07 — Add email/password access and database sessions
 
 **Depends on:** P1-03, P1-05. **Area:** Authentication configuration/integration and registration/login/logout pages.
+
+
+
+
 
 - [X] Configure Better Auth and its React client for registration, login, logout, and database-backed cookie sessions under `/api/auth/*`. Register attendee roles as server-owned fields from the first signup implementation.
 - [X] Provide the account forms/session-aware navigation and backend session access. Retain origin protections and define application mutation CSRF checks; configure development base/callback origins.
@@ -153,6 +181,10 @@ Implementation and 12 PostgreSQL-backed auth HTTP checks pass.
 
 **Depends on:** P1-06, P1-07. **Area:** Better Auth verification callbacks, verification/resend screen, and backend verified-email guard.
 
+
+
+
+
 - [ ] Send verification links directly through the provider; handle successful, invalid/expired, and resend flows using Better Auth. Permit anonymous browsing and enforce verification at the booking boundary.
 - [X] Verify `unverified_user_cannot_book`, `verified_user_is_eligible`, and invalid/expired-link behavior without storing links in `EmailJob`. Keep the controlled credential/database test setup independent of real outbound email.
 
@@ -164,6 +196,10 @@ Pending: attach the exported verification guard to reservation creation when the
 
 **Depends on:** P1-06, P1-07. **Area:** Better Auth recovery callbacks and request/reset-password pages.
 
+
+
+
+
 - [X] Implement the direct-provider recovery flow with Better Auth-owned token validation and safe user-facing responses; preserve its supported session-revocation behavior.
 - [X] Verify a valid reset, expired/invalid links, and that an old password no longer signs in after a successful reset. Confirm recovery secrets do not enter business jobs or logs.
 
@@ -172,6 +208,10 @@ Pending: attach the exported verification guard to reservation creation when the
 ### P1-10 — Add Google sign-in and verified account linking
 
 **Depends on:** P1-07, P1-08; valid Google client configuration. **Area:** Better Auth Google configuration and sign-in UI.
+
+
+
+
 
 - [X] Configure the approved Google provider and callback URLs; support a new Google attendee without an extra verification email when Google supplies a trusted verified address.
 - [X] Enforce automatic linking only for the same verified email on both identities. Preserve the existing user/role/history, and keep unverified/different-email cases out of automatic linking.
@@ -185,6 +225,10 @@ Reservation-history checks remain scheduled for P2-03.
 
 **Depends on:** P1-07, P1-08. **Area:** Role guards, protected admin routes, private admin provisioning, and frontend admin navigation.
 
+
+
+
+
 - [X] Provision the authorized private admin through a controlled setup path, with no public promotion endpoint or exposed admin credentials. Enforce current server-side admin permission and attendee ownership checks as applicable.
 - [X] Verify anonymous and attendee rejection on admin operations, role/profile injection rejection, and admin access. Preserve admin eligibility for the ordinary attendee flow without granting booking-rule bypasses.
 
@@ -193,6 +237,10 @@ Reservation-history checks remain scheduled for P2-03.
 ### P1-12 — Create, edit, and publish workshops
 
 **Depends on:** P1-03, P1-05, P1-11. **Area:** Events controller/service/Zod schemas, application exception filter, and admin workshop forms.
+
+
+
+
 
 - [X] Define the event-management API contract and implement complete required drafts, ordinary edits, publication, capacity, deadlines, fixed WIB input, and shared organizer contact display. Add the small Zod pipe and safe application error handling with these real endpoints.
 - [X] Apply the event-lock protocol from the first capacity/deadline implementation. Significant draft schedule/venue edits require a reason and immutable before/after revision history. Reject significant published-event edits until P3-03 implements their complete mutation/history/notification operation; ordinary published edits remain available within their rules.
@@ -203,6 +251,10 @@ Reservation-history checks remain scheduled for P2-03.
 ### P1-13 — Browse and find published workshops
 
 **Depends on:** P1-03, P1-12. **Area:** Public event list/detail API and React pages.
+
+
+
+
 
 - [X] Implement upcoming published events, title search, WIB date filtering in URL parameters, and event details with schedule, venue/address, availability, deadlines, policy, and contact email.
 - [X] Handle available/full/registration-closed/cancelled conditions and loading/empty/error states. Protect drafts from anonymous discovery; keep cancelled details clear to an attendee following an existing event link.
@@ -220,6 +272,10 @@ Manual browser verification is pending because browser automation is unavailable
 
 **Depends on:** P1-05. **Area:** Notification service enqueue operations and shared transaction-client use.
 
+
+
+
+
 - [X] Implement the typed enqueue operation consumed by business services: caller-owned Prisma transaction plus notification type, reservation ID, and optional event-change ID. Capture recipient email and derive the unique logical deduplication key.
 - [X] Validate change/event pairing and type-specific relationships, initialize a pending job, and avoid provider calls. Verify `business_rollback_removes_pending_job`, `duplicate_action_does_not_duplicate_job`, and `mismatched_event_change_is_rejected`.
 
@@ -228,6 +284,10 @@ Manual browser verification is pending because browser automation is unavailable
 ### P2-02 — Reserve one place safely
 
 **Depends on:** P1-08, P1-12, P1-13, P2-01. **Area:** Reservation controller/service/Zod contract and event-page booking/confirmation UI.
+
+
+
+
 
 - [X] Implement booking with session identity, verified email, event row lock at `READ COMMITTED`, current time after lock acquisition, current eligibility/count checks, a cryptographically random unique reference, and recorded event revision.
 - [X] Save the reservation and `BOOKING_CONFIRMED` job atomically; the UI shows the successful reference or a useful conflict and refreshes affected queries. Handle a reference collision by safely retrying the rolled-back creation.
@@ -240,6 +300,10 @@ Browser verification of booking, confirmation, and authentication return navigat
 ### P2-03 — Show personal reservations and history
 
 **Depends on:** P2-02. **Area:** Owned reservation reads, My reservations, and booking details.
+
+
+
+
 
 - [X] Expose only the signed-in user's current/past reservations, preserving cancelled entries, references, current event information, cancellation deadlines, and shared late-cancellation contact instructions.
 - [X] Verify `another_attendees_id_does_not_reveal_booking`, history visibility, empty/error states, and refresh after booking. Complete the linked-Google identity check from P1-10 against real existing reservations when its credentials are available.
@@ -256,6 +320,10 @@ Browser checks and controlled real Google sign-in with existing reservations rem
 
 **Depends on:** P2-03. **Area:** Reservation cancellation operation and attendee controls.
 
+
+
+
+
 - [X] Cancel an owned confirmed reservation under the event lock, enforce the more-than-24-hours rule or affected-revision exception, retain actor/time/source, and enqueue its cancellation notice atomically.
 - [X] Allow a later eligible booking through the existing booking operation, creating a new reference/row at the latest revision. Show contact instructions when self-service cancellation is closed.
 - [X] Verify just before, exactly at, and just after the 24-hour cutoff; a lock wait crossing the cutoff; revised-start boundaries; and `cancel_rebook_cancel_preserves_all_history`. Repeated cancellation must not release twice or enqueue another logical notice.
@@ -268,8 +336,10 @@ Browser verification of cancellation confirmation, history, contact instructions
 
 **Depends on:** P1-11, P3-01. **Area:** Admin attendee list, protected reservation cancellation operation, and reason form.
 
-- [ ] Provide the event's attendee/confirmed-reservation list and an explicit admin cancellation flow, including late requests. Require a nonblank reason and record the real admin, source, and time.
-- [ ] Verify ordinary attendees cannot call the operation, the required reason cannot be omitted, the locked transition and job commit together, and prior cancelled records remain unchanged. Keep the admin's personal cancellation UI on ordinary attendee rules.
+
+
+- [x] Provide the event's attendee/confirmed-reservation list and an explicit admin cancellation flow, including late requests. Require a nonblank reason and record the real admin, source, and time.
+- [x] Verify ordinary attendees cannot call the operation, the required reason cannot be omitted, the locked transition and job commit together, and prior cancelled records remain unchanged. Keep the admin's personal cancellation UI on ordinary attendee rules.
 
 **Done when:** An organizer can handle a contact request without rewriting booking history or using a public management credential.
 
@@ -277,9 +347,11 @@ Browser verification of cancellation confirmation, history, contact instructions
 
 **Depends on:** P1-12, P2-01, P3-01. **Area:** Published-event change operation and admin edit/reason UI.
 
-- [ ] Reuse significant-change history under the event lock: require a reason, capture old/new values, increment the revision once, retain existing bookings, validate the revised schedule/deadline, and enqueue one `EVENT_CHANGED` job per confirmed reservation.
-- [ ] Reject significant changes at or after the current start; leave ordinary description/capacity/deadline changes outside revision advancement. Explain updated details and cancellation eligibility on attendee pages.
-- [ ] Verify before/at/after start, combined/no-op edits, booking/change concurrency, two consecutive changes, restoration of the original schedule, and that bookings/rebookings after a change do not inherit the earlier exception.
+
+
+- [x] Reuse significant-change history under the event lock: require a reason, capture old/new values, increment the revision once, retain existing bookings, validate the revised schedule/deadline, and enqueue one `EVENT_CHANGED` job per confirmed reservation.
+- [x] Reject significant changes at or after the current start; leave ordinary description/capacity/deadline changes outside revision advancement. Explain updated details and cancellation eligibility on attendee pages.
+- [x] Verify before/at/after start, combined/no-op edits, booking/change concurrency, two consecutive changes, restoration of the original schedule, and that bookings/rebookings after a change do not inherit the earlier exception.
 
 **Done when:** Affected attendees are distinguishable from later bookings, with coherent history and pending notices committed together.
 
@@ -287,8 +359,10 @@ Browser verification of cancellation confirmation, history, contact instructions
 
 **Depends on:** P3-02, P3-03. **Area:** Event cancellation service/controller and admin confirmation/reason UI.
 
-- [ ] Permit cancellation before scheduled end, including during the session. Lock the event, require a reason, preserve its schedule, record cancellation metadata, cancel remaining confirmed reservations, and enqueue their `EVENT_CANCELLED` notices in one transaction.
-- [ ] Verify cancellation before/during the session, rejection exactly at/after end, competing booking/cancellation requests, rollback, preserved earlier cancellations, and repeat-action deduplication. Refresh public and attendee views so cancellation is explicit.
+
+
+- [x] Permit cancellation before scheduled end, including during the session. Lock the event, require a reason, preserve its schedule, record cancellation metadata, cancel remaining confirmed reservations, and enqueue their `EVENT_CANCELLED` notices in one transaction.
+- [x] Verify cancellation before/during the session, rejection exactly at/after end, competing booking/cancellation requests, rollback, preserved earlier cancellations, and repeat-action deduplication. Refresh public and attendee views so cancellation is explicit.
 
 **Done when:** No new reservations can succeed after cancellation, and all affected booking history and notices agree with the event state.
 
@@ -296,8 +370,12 @@ Browser verification of cancellation confirmation, history, contact instructions
 
 **Depends on:** P1-06. **Area:** Existing notification design/configuration and provider-specific behavior.
 
-- [ ] Resolve D4 with concrete numeric values for attempts, delays, polling, request timeout, and claim expiry; define permanent versus retryable failures and the selected provider's idempotency window/limitations.
-- [ ] Record the approved values in existing architecture/runtime configuration and use them as exact inputs to the sender checks. Ensure claims outlive bounded provider attempts and no promise of exactly-once/inbox delivery is introduced.
+
+
+
+
+- [x] Resolve D4 with concrete numeric values for attempts, delays, polling, request timeout, and claim expiry; define permanent versus retryable failures and the selected provider's idempotency window/limitations.
+- [x] Record the approved values in existing architecture/runtime configuration and use them as exact inputs to the sender checks. Ensure claims outlive bounded provider attempts and no promise of exactly-once/inbox delivery is introduced.
 
 **Done when:** P3-06 has no invented operational defaults. This decision does not add another settings entity or UI.
 
@@ -305,34 +383,56 @@ Browser verification of cancellation confirmation, history, contact instructions
 
 **Depends on:** P1-06, P2-01, P3-04, P3-05. **Area:** Background sender, claim/recovery operations, and the four English business-email templates.
 
-- [ ] Claim eligible jobs with PostgreSQL row locking/`SKIP LOCKED`, release the claim transaction before network calls, check obsolescence, count attempts, send through the existing provider function, and condition updates on claim ownership.
-- [ ] Implement bounded retries, expired-claim recovery including final-attempt interruption, stable provider idempotency identity where supported, and clean sender lifecycle within NestJS. Never rerun the business operation during delivery.
-- [ ] Implement `SKIPPED` decisions for cancelled confirmations and superseded changes. Preserve cancellation notices for their original reference after rebooking; use current details in still-valid confirmations. Authentication emails remain outside this queue.
-- [ ] Verify success, transient/permanent errors, ambiguous timeout, restart recovery, competing claims, stale-owner rejection, exhausted attempts, and all skip cases. Confirm provider acceptance is represented as sent without claiming inbox delivery; redact sensitive errors.
+
+
+
+
+- [x] Claim eligible jobs with PostgreSQL row locking/`SKIP LOCKED`, release the claim transaction before network calls, check obsolescence, count attempts, send through the existing provider function, and condition updates on claim ownership.
+- [x] Implement bounded retries, expired-claim recovery including final-attempt interruption, stable provider idempotency identity where supported, and clean sender lifecycle within NestJS. Never rerun the business operation during delivery.
+- [x] Implement `SKIPPED` decisions for cancelled confirmations and superseded changes. Preserve cancellation notices for their original reference after rebooking; use current details in still-valid confirmations. Authentication emails remain outside this queue.
+- [x] Verify success, transient/permanent errors, ambiguous timeout, restart recovery, competing claims, stale-owner rejection, exhausted attempts, and all skip cases. Confirm provider acceptance is represented as sent without claiming inbox delivery; redact sensitive errors.
 
 **Done when:** Pending jobs survive interruption and are sent, retried, failed, or skipped according to the approved policy, with no provider request inside the business transaction.
+
+Real-provider delivery verification remains pending.
 
 ### P3-07 — Inspect and manually retry failed messages
 
 **Depends on:** P1-03, P1-11, P3-06. **Area:** Protected notification endpoints and admin failed-email list.
 
-- [ ] Show useful failed-message metadata, latest sanitized error, and attempt information. Permit manual retry only from `FAILED`, retaining job/deduplication identity and total attempts while resetting the retry-cycle count and recording the admin/time.
-- [ ] Reuse normal claiming/obsolescence rules. Verify permissions, a manual retry racing recovery/another retry, stale-owner protection, and rejection of retries for sent/skipped messages. No credentials or authentication links appear in responses.
+
+
+
+
+- [x] Show useful failed-message metadata, latest sanitized error, and attempt information. Permit manual retry only from `FAILED`, retaining job/deduplication identity and total attempts while resetting the retry-cycle count and recording the admin/time.
+- [x] Reuse normal claiming/obsolescence rules. Verify permissions, a manual retry racing recovery/another retry, stale-owner protection, and rejection of retries for sent/skipped messages. No credentials or authentication links appear in responses.
 
 **Done when:** An admin can diagnose/retry a failed notification without repeating its reservation/event action or treating a skipped message as a failure.
+
+Rendered browser verification remains pending: Google Chrome Computer Use access was not approved.
 
 ### P3-08 — Prepare sample events and reviewer access
 
 **Depends on:** P1-10, P3-04, P3-07. **Area:** Existing seed/provisioning setup, sample content, and demo instructions.
 
-- [ ] Add controlled sample workshops and a preverified attendee account; retain private admin provisioning. Make setup repeatable without deleting live reservations or silently resetting an existing user's credentials.
-- [ ] Verify the sample attendee can demonstrate booking/history and cannot manage events. Document public attendee access and private admin demonstration separately in the existing README; keep admin secrets outside source and frontend bundles.
+
+
+
+
+- [x] Add controlled sample workshops and a preverified attendee account; retain private admin provisioning. Make setup repeatable without deleting live reservations or silently resetting an existing user's credentials.
+- [x] Verify the sample attendee can demonstrate booking/history and cannot manage events. Document public attendee access and private admin demonstration separately in the existing README; keep admin secrets outside source and frontend bundles.
 
 **Done when:** A reviewer can try the attendee journey quickly and the owner can demonstrate management with a separate private login.
+
+Development sample provisioning awaits configured `DEMO_*` values and an existing verified private admin. Real Google and rendered browser acceptance checks remain pending.
 
 ### P3-09 — Confirm the deployment configuration and budget
 
 **Depends on:** P3-06. **Area:** Railway app/database and email-provider configuration decisions.
+
+
+
+
 
 - [ ] Resolve D5 with the user: actual app/database services and region, usage expectations/spending limit, stable public URL, HTTPS, sender/contact configuration, and Google/Better Auth callbacks.
 - [ ] Keep the app running for idle-time email processing by disabling optional sleeping. Confirm development/test data and secrets are separate from the deployment target; record the chosen values in existing deployment instructions without exposing secrets.
@@ -343,6 +443,10 @@ Browser verification of cancellation confirmation, history, contact instructions
 
 **Depends on:** P3-08, P3-09. **Area:** Existing build/start configuration, NestJS static serving, and README deployment commands.
 
+
+
+
+
 - [ ] Build the React app and NestJS backend into a runnable release. Serve browser routes through the React entry point while `/api`, including unknown API paths, retains API responses. Include the in-process sender and compatible static-serving integration.
 - [ ] Prepare environment settings and the reviewed production migration procedure for the selected database. Check migrations/constraints on an isolated clean database before proposing application to the production target.
 - [ ] Verify the release build/start, a direct nested browser URL, `/api` JSON parsing/404 behavior, auth callback routing, and sender startup/recovery. Keep secrets out of build artifacts and instructions.
@@ -352,6 +456,10 @@ Browser verification of cancellation confirmation, history, contact instructions
 ### P3-11 — Deploy and complete the V1 acceptance check
 
 **Depends on:** P3-10 and completion of the earlier feature tasks. **Area:** Approved public deployment and existing README/task status.
+
+
+
+
 
 - [ ] With deployment authorized in the active execution task/session, apply the reviewed migration/setup to the confirmed target and deploy the prepared release. Configure HTTPS, secure cookies, trusted origins/callbacks, and the selected running/cost settings.
 - [ ] Perform one complete controlled attendee journey and private admin journey, including verification/recovery/Google access, booking/history, cancellations/rebooking, rescheduling, and essential emails. Check direct page navigation, unauthorized management requests, and failed-email retry.

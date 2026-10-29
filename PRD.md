@@ -68,6 +68,31 @@ Automatically link Google sign-in to an existing account only when both identiti
 - Support title search and date filtering.
 - Provide an event detail page with the title, description, start and end times, physical venue and address, availability, registration deadline, and cancellation policy.
 - Clearly distinguish available events, fully booked events, closed registration, and cancelled events.
+- Event Cover Images
+  - Events may have an optional cover image uploaded by an admin.
+  - Display the event cover on discovery cards and the event detail page.
+  - If no cover image is provided, display a consistent branded fallback image.
+  - Missing cover images must not prevent event creation or publication.
+  ### Event Sharing
+  - Allow visitors and attendees to share the public event URL from Event Details.
+  - Provide a secondary Share Event action on the Booking Success page.
+  - Use native device/browser sharing when available, with Copy Link as a fallback.
+  - Shared links must never expose private reservation details or booking references.
+  ### Event-Specific Link Preview
+  - Public event links should provide event-specific preview metadata, including title, description, URL, and image.
+  - Use the uploaded event cover for the preview image when available.
+  - Otherwise, use a shared branded fallback image.
+  - Preview metadata must be accessible to supported social link crawlers.
+  ### Venue &amp; Location
+  - Display the venue name and full physical address.
+  - Support an optional embedded Google Maps preview.
+  - Provide an Open in Google Maps link.
+  - The address and external Maps link must remain usable when the embedded map is missing or unavailable.
+  ### Remaining Capacity Indicator
+  - Display the number of remaining spots on Event Details only when capacity is low.
+  - Show "Only X spots left" when the remaining count is greater than zero, no more than 5, and no more than 20% of total capacity.
+  - Do not show scarcity messaging for attendees with an active reservation or when the event is fully booked, registration is closed, or the event is cancelled.
+  - Displayed availability is informational and does not guarantee a reservation.
 
 ### 5.3 Reservations
 
@@ -89,6 +114,12 @@ Automatically link Google sign-in to an existing account only when both identiti
 - Cancel an attendee's reservation when handling a request directly, including requests within the self-service cutoff.
 - Require an admin reason for reservation/event cancellation and significant schedule/venue changes. Retain the admin, time, and previous/new details for significant changes; a separate history dashboard is outside V1.
 - Allow schedule and venue changes only before the workshop starts. Allow event cancellation before the scheduled end, including during the session, preserving the original schedule and recording the actual cancellation time.
+- Event Media &amp; Location
+  - Allow admins to upload, replace, or remove an optional event cover image.
+  - Validate uploaded images before storing them.
+  - Allow admins to enter or update an optional Google Maps embed URL for the event venue.
+  - Accept only validated, approved Google Maps embed URLs, not arbitrary iframe HTML.
+  - Events remain valid without a cover image or embedded map.
 
 ### 5.5 Essential Communication
 
