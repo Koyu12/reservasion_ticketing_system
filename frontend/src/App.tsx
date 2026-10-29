@@ -10,6 +10,7 @@ import { RequireAdmin } from './components/RequireAdmin'
 import { WorkshopList } from './components/admin/WorkshopList'
 import { WorkshopEditor } from './components/admin/WorkshopEditor'
 import { WorkshopAttendees } from './components/admin/WorkshopAttendees'
+import { FailedEmails } from './components/admin/FailedEmails'
 import { WorkshopDiscovery } from './components/workshops/WorkshopDiscovery'
 import { WorkshopDetails } from './components/workshops/WorkshopDetails'
 import { BookingConfirmation } from './components/workshops/BookingConfirmation'
@@ -57,6 +58,7 @@ export default function App() {
             {session.user.role === 'ADMIN' && (
               <>
                 <Link to="/admin/events">Manage workshops</Link>{' '}
+                <Link to="/admin/notifications">Failed emails</Link>{' '}
               </>
             )}
             <button
@@ -108,6 +110,14 @@ export default function App() {
             element={
               <RequireAdmin>
                 <WorkshopList />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/admin/notifications"
+            element={
+              <RequireAdmin>
+                <FailedEmails />
               </RequireAdmin>
             }
           />

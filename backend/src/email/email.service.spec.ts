@@ -138,4 +138,58 @@ describe('EmailService', () => {
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it('sends the supplied stable idempotency identity', async () => {
+    fetchMock.mockResolvedValue(Response.json({ id: 'accepted' }));
+    await service.send({ ...message, idempotencyKey: 'email-job/test-job' });
+    expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({
+      'Idempotency-Key': 'email-job/test-job',
+    });
+  });
+
+  it.each([
+    [408, 'request_timeout', true],
+    [500, 'application_error', true],
+    [429, 'rate_limit_exceeded', true],
+    [409, 'concurrent_idempotent_requests', true],
+    [429, 'daily_quota_exceeded', false],
+    [429, 'monthly_quota_exceeded', false],
+    [409, 'invalid_idempotent_request', false],
+    [409, 'unknown', false],
+    [401, 'validation_error', false],
+    [403, 'validation_error', false],
+    [422, 'validation_error', false],
+  ])('classifies HTTP %s / %s', async (status, name, retryable) => {
+    fetchMock.mockResolvedValue(
+      Response.json(
+        { name, message: 'Sensitive provider text' },
+        { status: Number(status) },
+      ),
+    );
+    await expect(service.send(message)).rejects.toMatchObject({ retryable });
+  });
+
+  it.each([
+    ['90', 90_000],
+    ['0', 0],
+    ['1.5', 1500],
+    ['-1', 0],
+    ['', 0],
+    ['tomorrow', 0],
+    ['Infinity', 0],
+    ['1e100', 0],
+  ])('interprets retry-after %s as %s ms', async (header, expected) => {
+    fetchMock.mockResolvedValue(
+      Response.json(
+        { name: 'rate_limit_exceeded' },
+        {
+          status: 429,
+          headers: { 'retry-after': String(header) },
+        },
+      ),
+    );
+    await expect(service.send(message)).rejects.toMatchObject({
+      retryAfterMs: expected,
+    });
+  });
 });
