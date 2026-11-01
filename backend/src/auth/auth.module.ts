@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { AuthModule } from '@thallesp/nestjs-better-auth';
-import { PrismaModule } from '../prisma/prisma.module.js';
-import { PrismaService } from '../prisma/prisma.service.js';
+import { CommonModule } from '../common/common.module.js';
+import { PrismaService } from '../common/prisma.service.js';
 import { createAuth } from './auth.js';
 import { ApplicationOriginGuard } from './application-origin.guard.js';
 import { SessionController } from './session.controller.js';
@@ -14,21 +14,15 @@ import { AdminAccessController } from './admin-access.controller.js';
 
 @Module({
   imports: [
-    PrismaModule,
+    CommonModule,
     AuthModule.forRootAsync({
-      imports: [PrismaModule, EmailModule],
+      imports: [CommonModule, EmailModule],
       inject: [PrismaService, EmailService],
-      useFactory: (prisma: PrismaService, emailService: EmailService) => ({
-        auth: createAuth(prisma, emailService),
-      }),
+      useFactory: (prisma: PrismaService, emailService: EmailService) => ({ auth: createAuth(prisma, emailService) }),
     }),
   ],
   controllers: [SessionController, AdminAccessController],
-  providers: [
-    { provide: APP_GUARD, useClass: ApplicationOriginGuard },
-    VerifiedEmailGuard,
-    AdminGuard,
-  ],
+  providers: [{ provide: APP_GUARD, useClass: ApplicationOriginGuard }, VerifiedEmailGuard, AdminGuard],
   exports: [VerifiedEmailGuard, AdminGuard],
 })
 export class AppAuthModule {}

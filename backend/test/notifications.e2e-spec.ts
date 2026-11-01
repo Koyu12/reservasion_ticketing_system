@@ -1,4 +1,6 @@
+import { APP_CONFIG } from '../src/common/config.js';
 import 'dotenv/config';
+import { WinstonModule } from 'nest-winston';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { TestingModule } from '@nestjs/testing';
@@ -6,9 +8,9 @@ import { randomUUID } from 'node:crypto';
 import type { Prisma } from '../src/generated/prisma/client.js';
 import { NotificationsModule } from '../src/notifications/notifications.module.js';
 import { NotificationsService } from '../src/notifications/notifications.service.js';
-import type { EnqueueNotificationInput } from '../src/notifications/notifications.service.js';
-import { PrismaModule } from '../src/prisma/prisma.module.js';
-import { PrismaService } from '../src/prisma/prisma.service.js';
+import type { EnqueueNotificationInput } from '../src/notifications/notifications.validation.js';
+import { CommonModule } from '../src/common/common.module.js';
+import { PrismaService } from '../src/common/prisma.service.js';
 import { requireTestDatabaseUrl } from './test-database.js';
 
 describe('Transactional notification enqueue (PostgreSQL)', () => {
@@ -21,16 +23,14 @@ describe('Transactional notification enqueue (PostgreSQL)', () => {
   let reservationId: string;
 
   beforeAll(async () => {
-    const url = requireTestDatabaseUrl(
-      process.env.TEST_DATABASE_URL,
-      process.env.DATABASE_URL,
-    );
+    const url = requireTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env.DATABASE_URL);
     const previousUrl = process.env.DATABASE_URL;
     try {
       process.env.DATABASE_URL = url;
-      module = await Test.createTestingModule({
-        imports: [PrismaModule, NotificationsModule],
-      }).compile();
+      module = await Test.createTestingModule({ imports: [WinstonModule.forRoot({ silent: true }), CommonModule, NotificationsModule] })
+        .overrideProvider(APP_CONFIG)
+        .useValue({ organizerContactEmail: 'organizer@example.invalid' })
+        .compile();
     } finally {
       if (previousUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = previousUrl;
@@ -38,16 +38,10 @@ describe('Transactional notification enqueue (PostgreSQL)', () => {
     prisma = module.get(PrismaService);
     service = module.get(NotificationsService);
     await module.init();
-    expect(
-      (
-        await prisma.$queryRaw<
-          { database: string }[]
-        >`SELECT current_database() AS database`
-      )[0].database,
-    ).toBe('reservation_ticketing_system_test');
-    await prisma.user.create({
-      data: { id: userId, name: 'Notification attendee', email },
-    });
+    expect((await prisma.$queryRaw<{ database: string }[]>`SELECT current_database() AS database`)[0].database).toBe(
+      'reservation_ticketing_system_test',
+    );
+    await prisma.user.create({ data: { id: userId, name: 'Notification attendee', email } });
   });
 
   beforeEach(async () => {
@@ -91,14 +85,7 @@ describe('Transactional notification enqueue (PostgreSQL)', () => {
   }
 
   function createReservation(tx: Prisma.TransactionClient) {
-    return tx.reservation.create({
-      data: {
-        eventId,
-        userId,
-        bookingReference: randomUUID(),
-        bookedRevision: 0,
-      },
-    });
+    return tx.reservation.create({ data: { eventId, userId, bookingReference: randomUUID(), bookedRevision: 0 } });
   }
 
   function createChange(changeEventId = eventId, revision = 1) {
@@ -121,50 +108,42 @@ describe('Transactional notification enqueue (PostgreSQL)', () => {
   }
 
   function enqueue(input: EnqueueNotificationInput) {
-    return prisma.$transaction((tx) => service.enqueue(tx, input), {
-      isolationLevel: 'ReadCommitted',
-    });
+    return prisma.$transaction((tx) => service.enqueue(tx, input), { isolationLevel: 'ReadCommitted' });
   }
 
-  it.each([
-    'BOOKING_CONFIRMED',
-    'RESERVATION_CANCELLED',
-    'EVENT_CANCELLED',
-    'EVENT_CHANGED',
-  ] as const)('creates a valid pending %s job', async (type) => {
-    const before = Date.now();
-    const change = type === 'EVENT_CHANGED' ? await createChange() : undefined;
-    const input: EnqueueNotificationInput =
-      type === 'EVENT_CHANGED'
-        ? { type, reservationId, eventChangeId: change!.id }
-        : { type, reservationId };
-    const job = await enqueue(input);
-    expect(job).toMatchObject({
-      type,
-      reservationId,
-      eventChangeId: change?.id ?? null,
-      recipientEmail: email,
-      deduplicationKey: `${type}:${reservationId}${change ? `:${change.id}` : ''}`,
-      status: 'PENDING',
-      attemptCount: 0,
-      retryCycleAttemptCount: 0,
-      lastAttemptAt: null,
-      claimToken: null,
-      claimExpiresAt: null,
-      providerMessageId: null,
-      sentAt: null,
-      lastError: null,
-      skippedAt: null,
-      skipReason: null,
-      lastManualRetryById: null,
-      lastManualRetryAt: null,
-    });
-    expect(job.nextAttemptAt!.getTime()).toBeGreaterThanOrEqual(before);
-    expect(job.nextAttemptAt!.getTime()).toBeLessThanOrEqual(Date.now());
-    expect(await prisma.emailJob.findUnique({ where: { id: job.id } })).toEqual(
-      job,
-    );
-  });
+  it.each(['BOOKING_CONFIRMED', 'RESERVATION_CANCELLED', 'EVENT_CANCELLED', 'EVENT_CHANGED'] as const)(
+    'creates a valid pending %s job',
+    async (type) => {
+      const before = Date.now();
+      const change = type === 'EVENT_CHANGED' ? await createChange() : undefined;
+      const input: EnqueueNotificationInput =
+        type === 'EVENT_CHANGED' ? { type, reservationId, eventChangeId: change!.id } : { type, reservationId };
+      const job = await enqueue(input);
+      expect(job).toMatchObject({
+        type,
+        reservationId,
+        eventChangeId: change?.id ?? null,
+        recipientEmail: email,
+        deduplicationKey: `${type}:${reservationId}${change ? `:${change.id}` : ''}`,
+        status: 'PENDING',
+        attemptCount: 0,
+        retryCycleAttemptCount: 0,
+        lastAttemptAt: null,
+        claimToken: null,
+        claimExpiresAt: null,
+        providerMessageId: null,
+        sentAt: null,
+        lastError: null,
+        skippedAt: null,
+        skipReason: null,
+        lastManualRetryById: null,
+        lastManualRetryAt: null,
+      });
+      expect(job.nextAttemptAt!.getTime()).toBeGreaterThanOrEqual(before);
+      expect(job.nextAttemptAt!.getTime()).toBeLessThanOrEqual(Date.now());
+      expect(await prisma.emailJob.findUnique({ where: { id: job.id } })).toEqual(job);
+    },
+  );
 
   it('business_rollback_removes_pending_job', async () => {
     let rolledBackId: string | undefined;
@@ -172,36 +151,18 @@ describe('Transactional notification enqueue (PostgreSQL)', () => {
       prisma.$transaction(async (tx) => {
         await tx.reservation.update({
           where: { id: reservationId },
-          data: {
-            status: 'CANCELLED',
-            cancelledAt: new Date(),
-            cancelledById: userId,
-            cancellationSource: 'SELF_SERVICE',
-          },
+          data: { status: 'CANCELLED', cancelledAt: new Date(), cancelledById: userId, cancellationSource: 'SELF_SERVICE' },
         });
         const reservation = await createReservation(tx);
         rolledBackId = reservation.id;
-        await service.enqueue(tx, {
-          type: 'BOOKING_CONFIRMED',
-          reservationId: reservation.id,
-        });
+        await service.enqueue(tx, { type: 'BOOKING_CONFIRMED', reservationId: reservation.id });
         throw new Error('Deliberate rollback');
       }),
     ).rejects.toThrow('Deliberate rollback');
     expect(rolledBackId).toBeDefined();
-    expect(
-      await prisma.reservation.findUnique({ where: { id: rolledBackId! } }),
-    ).toBeNull();
-    expect(
-      await prisma.emailJob.count({ where: { reservationId: rolledBackId! } }),
-    ).toBe(0);
-    expect(
-      (
-        await prisma.reservation.findUniqueOrThrow({
-          where: { id: reservationId },
-        })
-      ).status,
-    ).toBe('CONFIRMED');
+    expect(await prisma.reservation.findUnique({ where: { id: rolledBackId! } })).toBeNull();
+    expect(await prisma.emailJob.count({ where: { reservationId: rolledBackId! } })).toBe(0);
+    expect((await prisma.reservation.findUniqueOrThrow({ where: { id: reservationId } })).status).toBe('CONFIRMED');
   });
 
   it('duplicate_action_does_not_duplicate_job', async () => {
@@ -222,17 +183,9 @@ describe('Transactional notification enqueue (PostgreSQL)', () => {
 
   it('UUID letter casing does not change the logical notification identity', async () => {
     const change = await createChange();
-    const first = await enqueue({
-      type: 'EVENT_CHANGED',
-      reservationId,
-      eventChangeId: change.id,
-    });
+    const first = await enqueue({ type: 'EVENT_CHANGED', reservationId, eventChangeId: change.id });
     expect(
-      await enqueue({
-        type: 'EVENT_CHANGED',
-        reservationId: reservationId.toUpperCase(),
-        eventChangeId: change.id.toUpperCase(),
-      }),
+      await enqueue({ type: 'EVENT_CHANGED', reservationId: reservationId.toUpperCase(), eventChangeId: change.id.toUpperCase() }),
     ).toEqual(first);
     expect(await prisma.emailJob.count({ where: { reservationId } })).toBe(1);
   });
@@ -240,30 +193,16 @@ describe('Transactional notification enqueue (PostgreSQL)', () => {
   it('mismatched_event_change_is_rejected', async () => {
     const otherEvent = await createEvent();
     const change = await createChange(otherEvent.id);
-    await expect(
-      enqueue({
-        type: 'EVENT_CHANGED',
-        reservationId,
-        eventChangeId: change.id,
-      }),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(enqueue({ type: 'EVENT_CHANGED', reservationId, eventChangeId: change.id })).rejects.toBeInstanceOf(BadRequestException);
     expect(await prisma.emailJob.count({ where: { reservationId } })).toBe(0);
   });
 
   it('rejects a missing reservation', async () => {
-    await expect(
-      enqueue({ type: 'BOOKING_CONFIRMED', reservationId: randomUUID() }),
-    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(enqueue({ type: 'BOOKING_CONFIRMED', reservationId: randomUUID() })).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('rejects a missing event change', async () => {
-    await expect(
-      enqueue({
-        type: 'EVENT_CHANGED',
-        reservationId,
-        eventChangeId: randomUUID(),
-      }),
-    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(enqueue({ type: 'EVENT_CHANGED', reservationId, eventChangeId: randomUUID() })).rejects.toBeInstanceOf(NotFoundException);
     expect(await prisma.emailJob.count({ where: { reservationId } })).toBe(0);
   });
 
@@ -277,10 +216,7 @@ describe('Transactional notification enqueue (PostgreSQL)', () => {
     { type: 'UNKNOWN' },
     { type: 'BOOKING_CONFIRMED', recipientEmail: 'injected@example.invalid' },
   ])('rejects invalid notification context: %j', async (fields) => {
-    const input = {
-      ...fields,
-      reservationId,
-    } as unknown as EnqueueNotificationInput;
+    const input = { ...fields, reservationId } as unknown as EnqueueNotificationInput;
     await expect(enqueue(input)).rejects.toBeInstanceOf(BadRequestException);
     expect(await prisma.emailJob.count({ where: { reservationId } })).toBe(0);
   });
@@ -288,16 +224,8 @@ describe('Transactional notification enqueue (PostgreSQL)', () => {
   it('different changes produce distinct jobs', async () => {
     const firstChange = await createChange();
     const secondChange = await createChange(eventId, 2);
-    const first = await enqueue({
-      type: 'EVENT_CHANGED',
-      reservationId,
-      eventChangeId: firstChange.id,
-    });
-    const second = await enqueue({
-      type: 'EVENT_CHANGED',
-      reservationId,
-      eventChangeId: secondChange.id,
-    });
+    const first = await enqueue({ type: 'EVENT_CHANGED', reservationId, eventChangeId: firstChange.id });
+    const second = await enqueue({ type: 'EVENT_CHANGED', reservationId, eventChangeId: secondChange.id });
     expect(first.id).not.toBe(second.id);
     expect(await prisma.emailJob.count({ where: { reservationId } })).toBe(2);
   });
@@ -306,18 +234,10 @@ describe('Transactional notification enqueue (PostgreSQL)', () => {
     const first = await enqueue({ type: 'BOOKING_CONFIRMED', reservationId });
     await prisma.reservation.update({
       where: { id: reservationId },
-      data: {
-        status: 'CANCELLED',
-        cancelledAt: new Date(),
-        cancelledById: userId,
-        cancellationSource: 'SELF_SERVICE',
-      },
+      data: { status: 'CANCELLED', cancelledAt: new Date(), cancelledById: userId, cancellationSource: 'SELF_SERVICE' },
     });
     const next = await createReservation(prisma);
-    const second = await enqueue({
-      type: 'BOOKING_CONFIRMED',
-      reservationId: next.id,
-    });
+    const second = await enqueue({ type: 'BOOKING_CONFIRMED', reservationId: next.id });
     expect(first.id).not.toBe(second.id);
     expect(first.deduplicationKey).not.toBe(second.deduplicationKey);
   });
@@ -337,10 +257,7 @@ describe('Transactional notification enqueue (PostgreSQL)', () => {
         lastAttemptAt: new Date(),
       },
     });
-    await prisma.user.update({
-      where: { id: userId },
-      data: { email: `changed-${userId}@example.invalid` },
-    });
+    await prisma.user.update({ where: { id: userId }, data: { email: `changed-${userId}@example.invalid` } });
     expect(await enqueue(input)).toEqual(sent);
   });
 });

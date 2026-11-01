@@ -26,14 +26,18 @@
     "@nestjs/common": "^11.0.1",
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/swagger": "11.4.7",
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1",
     "@thallesp/nestjs-better-auth": "^2.8.0",
     "better-auth": "^1.7.13",
     "dotenv": "^18.0.9",
+    "nest-winston": "2.0.0",
+    "nestjs-zod": "5.5.0",
     "pg": "^8.23.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "winston": "3.19.0",
     "zod": "4.6.7"
   },
   "devDependencies": {

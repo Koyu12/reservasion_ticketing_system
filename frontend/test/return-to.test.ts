@@ -6,6 +6,7 @@ const id = 'abcdef12-1234-4321-8123-abcdef123456'
 
 test('returns only permitted workshop and confirmation destinations', () => {
   assert.equal(safeReturnTo('/reservations'), '/reservations')
+  assert.equal(safeReturnTo(`/reservations/${id}`), `/reservations/${id}`)
   assert.equal(safeReturnTo(`/events/${id.toUpperCase()}`), `/events/${id}`)
   assert.equal(
     safeReturnTo(`/reservations/${id}/confirmation`),
@@ -29,7 +30,6 @@ test('rejects external, encoded, malformed and unrelated destinations', () => {
     '/login',
     '/%2f%2fexample.com',
     '\\example.com',
-    `/reservations/${id}`,
     `/reservations/${id}/confirmation/`,
   ])
     assert.equal(safeReturnTo(value), '/events', String(value))

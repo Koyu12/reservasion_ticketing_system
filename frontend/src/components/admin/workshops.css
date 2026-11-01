@@ -1,161 +1,196 @@
+﻿@reference '../../styles/app.css';
+
 .workshops {
-  color: #18212b;
-  font-family: system-ui, sans-serif;
-  line-height: 1.5;
-  max-width: 68rem;
-  margin: 2rem auto;
-  padding: 0 1rem 3rem;
+  @apply mx-auto min-w-0 pt-8 pb-12 font-sans text-[14px] leading-[1.5] text-ink;
+  width: min(1200px, calc(100% - 32px));
   overflow-wrap: anywhere;
 }
 .workshops h1 {
-  margin: 1.5rem 0 0.5rem;
-  font-size: 2rem;
+  @apply m-0 mb-3 text-[28px] leading-9 font-bold;
 }
 .workshops h2 {
-  margin: 0;
-  font-size: 1.125rem;
+  @apply m-0 text-[20px] leading-7 font-semibold;
+}
+.workshops h3 {
+  @apply m-0 text-[18px] leading-6 font-semibold;
 }
 .workshops p {
+  @apply my-3 text-muted;
   max-width: 72ch;
 }
+.workshops p strong,
+.workshops time {
+  @apply text-ink;
+}
 .workshops a {
-  color: #174e89;
-  text-underline-offset: 0.2em;
+  @apply font-medium text-accent underline-offset-4;
+}
+.workshops a:hover {
+  @apply underline;
+}
+.workshops > a:first-child {
+  @apply mb-6 inline-flex min-h-11 items-center;
 }
 .workshops :focus-visible {
-  outline: 3px solid #174e89;
-  outline-offset: 3px;
+  @apply outline-2 outline-offset-4 outline-accent;
 }
 .workshops ::selection {
-  background: #d9e9fc;
+  @apply bg-accent text-canvas;
 }
-.workshop-heading,
-.workshop-list li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1.5rem;
-  flex-wrap: wrap;
+.workshops .workshop-heading {
+  @apply mb-8 flex flex-wrap items-start justify-between gap-6;
 }
-.workshop-list {
-  list-style: none;
-  padding: 0;
-  margin: 2rem 0;
+.workshops .workshop-heading > div {
+  @apply min-w-0 flex-1;
 }
-.workshop-list li {
-  padding: 1.25rem 0;
-  border-top: 1px solid #c5ced7;
-  font-variant-numeric: tabular-nums;
+.workshops .workshop-heading > div > p {
+  @apply m-0 text-[16px] leading-6;
 }
-.workshop-list p {
-  margin: 0.4rem 0;
+.workshops .workshop-heading > a {
+  @apply inline-flex min-h-11 items-center justify-center rounded-control bg-primary px-5 font-semibold text-primary-ink no-underline;
+}
+.workshops .workshop-heading > a:hover {
+  @apply bg-primary-hover no-underline;
+}
+.workshops .workshop-list {
+  @apply my-6 list-none p-0;
+}
+.workshops .workshop-list > li {
+  @apply flex flex-wrap items-start justify-between gap-6 border-0 border-t border-solid border-line py-6 tabular-nums;
+}
+.workshops .workshop-list > li:last-child {
+  @apply border-b;
+}
+.workshops .workshop-list > li > div {
+  @apply min-w-0;
+}
+.workshops .workshop-list > li > div:first-child {
+  @apply flex-1;
+  flex-basis: 260px;
+}
+.workshops .workshop-list > li > div:last-child:not(:first-child) {
+  @apply flex flex-col items-start gap-1;
+  flex-basis: 210px;
+}
+.workshops .workshop-list h2 a {
+  @apply text-ink;
+}
+.workshops .workshop-list p {
+  @apply my-2;
 }
 .workshops fieldset {
-  border: 0;
-  padding: 0;
-  margin: 2rem 0 0;
-  min-width: 0;
+  @apply m-0 mt-8 min-w-0 border-0 p-0;
 }
 .workshops legend {
-  font-size: 1.25rem;
-  font-weight: 650;
+  @apply mb-2 text-[22px] leading-8 font-semibold text-ink;
 }
-.workshop-fields {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1.5rem;
-  margin-top: 1.5rem;
+.workshops .workshop-fields {
+  @apply mt-6 grid grid-cols-1 gap-6;
 }
-.workshop-wide {
+.workshops .workshop-wide {
   grid-column: 1 / -1;
 }
 .workshops label {
-  display: block;
-  font-weight: 600;
-  margin-bottom: 0.4rem;
+  @apply mb-2 block text-[13px] leading-[19px] font-semibold text-ink;
 }
 .workshops input,
-.workshops textarea {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
+.workshops textarea,
+.workshops select {
+  @apply box-border min-h-12 w-full min-w-0 rounded-control border border-solid border-control bg-surface px-[14px] py-3 text-[14px] text-ink caret-accent;
   font: inherit;
-  color: inherit;
-  background: #fff;
-  padding: 0.65rem;
-  border: 1px solid #7d8995;
-  border-radius: 0.25rem;
-  caret-color: #174e89;
+  color-scheme: dark;
+}
+.workshops input[aria-invalid='true'],
+.workshops textarea[aria-invalid='true'] {
+  @apply border-error;
+}
+.workshops input::placeholder,
+.workshops textarea::placeholder {
+  @apply text-muted;
 }
 .workshops textarea {
-  resize: vertical;
+  @apply resize-y;
 }
 .workshops button {
-  font: inherit;
-  min-height: 2.75rem;
-  padding: 0.6rem 1.1rem;
-  border: 1px solid #174e89;
-  border-radius: 0.25rem;
-  color: #fff;
-  background: #174e89;
-  cursor: pointer;
+  @apply inline-flex min-h-11 cursor-pointer items-center justify-center rounded-control border border-solid border-transparent bg-primary px-5 py-3 text-[14px] font-semibold text-primary-ink;
 }
 .workshops button:hover:not(:disabled) {
-  background: #103a66;
+  @apply bg-primary-hover;
+}
+.workshops button[type='button'] {
+  @apply border-line bg-elevated text-ink;
+}
+.workshops button[type='button']:hover:not(:disabled) {
+  @apply border-control bg-surface;
 }
 .workshops button:disabled {
-  cursor: default;
-  color: #475563;
-  border-color: #c5ced7;
-  background: #e6ebf0;
+  @apply cursor-default opacity-45;
 }
 .workshops input:disabled,
 .workshops textarea:disabled {
-  color: #475563;
-  background: #edf0f3;
+  @apply opacity-50;
 }
-.workshop-error {
-  color: #9c2020;
+.workshops .workshop-error {
+  @apply text-error;
 }
-.workshop-error:focus {
-  outline: 2px solid #9c2020;
-  outline-offset: 0.5rem;
+.workshops div.workshop-error {
+  @apply my-5 rounded-control border border-solid border-error/35 bg-error/5 p-4;
 }
-.workshop-reason {
-  margin-top: 1.5rem;
+.workshops .workshop-error p,
+.workshops .workshop-error a {
+  @apply text-error;
 }
-.workshop-cancellation {
-  margin-top: 2rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid #c5ced7;
+.workshops [role='status']:not(button):not(a) {
+  @apply my-5 text-success;
 }
-.workshops .workshop-description {
-  white-space: pre-wrap;
+.workshops .workshop-reason {
+  @apply mt-6;
 }
-.attendee-list h3 {
-  margin: 0;
-  font-size: 1.125rem;
+.workshops .workshop-cancellation {
+  @apply mt-8 rounded-control border border-solid border-error/30 bg-error/5 p-5;
 }
-.attendee-cancellation {
+.workshops .workshop-cancellation > h2 {
+  @apply text-error;
+}
+.workshops .workshop-cancellation > button,
+.workshops .workshop-cancellation button[type='submit'],
+.workshops .attendee-cancellation button[type='submit'],
+.workshops button[aria-label^='Cancel reservation'] {
+  @apply border-error/40 bg-error/10 text-error;
+}
+.workshops .workshop-cancellation > button:hover:not(:disabled),
+.workshops .workshop-cancellation button[type='submit']:hover:not(:disabled),
+.workshops .attendee-cancellation button[type='submit']:hover:not(:disabled),
+.workshops button[aria-label^='Cancel reservation']:hover:not(:disabled) {
+  @apply border-error bg-error/20;
+}
+.workshops .workshop-description,
+.workshops .attendee-reason {
+  @apply whitespace-pre-wrap;
+}
+.workshops .attendee-cancellation {
+  @apply w-full rounded-control border border-solid border-line bg-surface p-5;
   flex-basis: 100%;
 }
-.attendee-cancellation fieldset {
-  margin-top: 0.5rem;
+.workshops .attendee-cancellation fieldset {
+  @apply mt-0;
 }
-.attendee-reason {
-  white-space: pre-wrap;
+.workshops .workshop-actions {
+  @apply mt-6 flex flex-wrap gap-3;
 }
-.workshop-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  margin-top: 2rem;
-}
-@media (max-width: 40rem) {
-  .workshop-fields {
-    grid-template-columns: minmax(0, 1fr);
+
+@media (width > 760px) {
+  .workshops {
+    @apply pt-12 pb-16;
+    width: min(1200px, calc(100% - 64px));
   }
   .workshops h1 {
-    font-size: 1.7rem;
+    @apply text-[36px] leading-11;
+  }
+  .workshops .workshop-fields {
+    @apply grid-cols-2;
+  }
+  .workshops .workshop-cancellation {
+    @apply p-6;
   }
 }

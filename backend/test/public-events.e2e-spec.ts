@@ -1,3 +1,4 @@
+import { APP_CONFIG } from '../src/common/config.js';
 import 'dotenv/config';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -7,7 +8,7 @@ import type { Server } from 'node:http';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { EmailService } from '../src/email/email.service.js';
-import { PrismaService } from '../src/prisma/prisma.service.js';
+import { PrismaService } from '../src/common/prisma.service.js';
 import type { Prisma } from '../src/generated/prisma/client.js';
 import { requireTestDatabaseUrl } from './test-database.js';
 
@@ -45,10 +46,7 @@ describe('Public workshop discovery (PostgreSQL)', () => {
   const previous: Record<string, string | undefined> = {};
 
   beforeAll(async () => {
-    const url = requireTestDatabaseUrl(
-      process.env.TEST_DATABASE_URL,
-      process.env.DATABASE_URL,
-    );
+    const url = requireTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env.DATABASE_URL);
     const settings = {
       DATABASE_URL: url,
       BETTER_AUTH_SECRET: randomBytes(32).toString('hex'),
@@ -63,30 +61,19 @@ describe('Public workshop discovery (PostgreSQL)', () => {
     const module = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(EmailService)
       .useValue({ send: () => Promise.reject(new Error('No email expected')) })
+      .overrideProvider(APP_CONFIG)
+      .useValue({ organizerContactEmail: 'organizer@example.invalid' })
       .compile();
     app = module.createNestApplication({ bodyParser: false });
     prisma = app.get(PrismaService);
-    expect(
-      (
-        await prisma.$queryRaw<
-          { database: string }[]
-        >`SELECT current_database() AS database`
-      )[0].database,
-    ).toBe('reservation_ticketing_system_test');
+    expect((await prisma.$queryRaw<{ database: string }[]>`SELECT current_database() AS database`)[0].database).toBe(
+      'reservation_ticketing_system_test',
+    );
     await app.init();
     await prisma.user.createMany({
       data: [
-        {
-          id: adminId,
-          name: 'Private organizer',
-          email: `public-admin-${adminId}@example.invalid`,
-          role: 'ADMIN',
-        },
-        {
-          id: attendeeId,
-          name: 'Private attendee',
-          email: `public-attendee-${attendeeId}@example.invalid`,
-        },
+        { id: adminId, name: 'Private organizer', email: `public-admin-${adminId}@example.invalid`, role: 'ADMIN' },
+        { id: attendeeId, name: 'Private attendee', email: `public-attendee-${attendeeId}@example.invalid` },
       ],
     });
   });
@@ -105,9 +92,7 @@ describe('Public workshop discovery (PostgreSQL)', () => {
   });
   afterAll(async () => {
     try {
-      await prisma?.user.deleteMany({
-        where: { id: { in: [adminId, attendeeId] } },
-      });
+      await prisma?.user.deleteMany({ where: { id: { in: [adminId, attendeeId] } } });
     } finally {
       await app?.close();
       for (const [key, value] of Object.entries(previous)) {
@@ -118,9 +103,7 @@ describe('Public workshop discovery (PostgreSQL)', () => {
   });
 
   function seed(overrides: Partial<Prisma.EventUncheckedCreateInput> = {}) {
-    const startsAt = overrides.startsAt
-      ? new Date(overrides.startsAt)
-      : new Date('2035-01-02T09:00:00+07:00');
+    const startsAt = overrides.startsAt ? new Date(overrides.startsAt) : new Date('2035-01-02T09:00:00+07:00');
     return prisma.event.create({
       data: {
         createdById: adminId,
@@ -159,9 +142,7 @@ describe('Public workshop discovery (PostgreSQL)', () => {
   }
 
   it('allows anonymous discovery, filters by publication/start, and orders consistently', async () => {
-    const late = await seed({
-      startsAt: new Date('2035-01-03T09:00:00+07:00'),
-    });
+    const late = await seed({ startsAt: new Date('2035-01-03T09:00:00+07:00') });
     const first = await seed();
     const tied = await seed();
     await seed({ status: 'DRAFT' });
@@ -169,10 +150,7 @@ describe('Public workshop discovery (PostgreSQL)', () => {
     await seed({ startsAt: new Date(now) });
     await seed({ startsAt: new Date(now - 7200000) });
     const response = await list();
-    expect(response.events.map((event) => event.id)).toEqual([
-      ...[first.id, tied.id].sort(),
-      late.id,
-    ]);
+    expect(response.events.map((event) => event.id)).toEqual([...[first.id, tied.id].sort(), late.id]);
     expect(response.organizerContactEmail).toBe('organizer@example.invalid');
     await request(app.getHttpServer()).get('/api/admin/events').expect(401);
   });
@@ -180,16 +158,9 @@ describe('Public workshop discovery (PostgreSQL)', () => {
   it('combines trimmed case-insensitive literal title search with a WIB date range', async () => {
     const target = await seed({ title: 'Practical TypeScript 100%_hands-on' });
     await seed({ title: 'Practical TypeScript 100xhands-on' });
-    await seed({
-      title: target.title,
-      startsAt: new Date('2035-01-03T09:00:00+07:00'),
-    });
+    await seed({ title: target.title, startsAt: new Date('2035-01-03T09:00:00+07:00') });
     expect(
-      (
-        await list(
-          `?q=${encodeURIComponent('  TYPESCRIPT 100%_  ')}&from=2035-01-02&to=2035-01-02`,
-        )
-      ).events.map((event) => event.id),
+      (await list(`?q=${encodeURIComponent('  TYPESCRIPT 100%_  ')}&from=2035-01-02&to=2035-01-02`)).events.map((event) => event.id),
     ).toEqual([target.id]);
     expect((await list('?q=not-found')).events).toEqual([]);
     expect((await list('?q=%20%20')).events).toHaveLength(3);
@@ -204,11 +175,7 @@ describe('Public workshop discovery (PostgreSQL)', () => {
     try {
       for (const zone of ['America/Los_Angeles', 'Asia/Jakarta']) {
         process.env.TZ = zone;
-        expect(
-          (await list('?from=2035-01-02&to=2035-01-02')).events.map(
-            (event) => event.id,
-          ),
-        ).toEqual([midnight.id, last.id]);
+        expect((await list('?from=2035-01-02&to=2035-01-02')).events.map((event) => event.id)).toEqual([midnight.id, last.id]);
       }
     } finally {
       if (timezone === undefined) delete process.env.TZ;
@@ -245,32 +212,14 @@ describe('Public workshop discovery (PostgreSQL)', () => {
   });
 
   it('supports either date bound and inclusive ranges across multiple WIB days', async () => {
-    const first = await seed({
-      startsAt: new Date('2035-01-02T00:00:00+07:00'),
-    });
-    const middle = await seed({
-      startsAt: new Date('2035-01-03T10:00:00+07:00'),
-    });
-    const last = await seed({
-      startsAt: new Date('2035-01-04T23:59:59.999+07:00'),
-    });
-    const outside = await seed({
-      startsAt: new Date('2035-01-05T00:00:00+07:00'),
-    });
-    expect(
-      (await list('?from=2035-01-03')).events.map((event) => event.id),
-    ).toEqual([middle.id, last.id, outside.id]);
-    expect(
-      (await list('?to=2035-01-03')).events.map((event) => event.id),
-    ).toEqual([first.id, middle.id]);
-    expect(
-      (await list('?from=2035-01-02&to=2035-01-04')).events.map(
-        (event) => event.id,
-      ),
-    ).toEqual([first.id, middle.id, last.id]);
-    expect(
-      (await list('?from=0001-01-01')).events.map((event) => event.id),
-    ).toEqual([first.id, middle.id, last.id, outside.id]);
+    const first = await seed({ startsAt: new Date('2035-01-02T00:00:00+07:00') });
+    const middle = await seed({ startsAt: new Date('2035-01-03T10:00:00+07:00') });
+    const last = await seed({ startsAt: new Date('2035-01-04T23:59:59.999+07:00') });
+    const outside = await seed({ startsAt: new Date('2035-01-05T00:00:00+07:00') });
+    expect((await list('?from=2035-01-03')).events.map((event) => event.id)).toEqual([middle.id, last.id, outside.id]);
+    expect((await list('?to=2035-01-03')).events.map((event) => event.id)).toEqual([first.id, middle.id]);
+    expect((await list('?from=2035-01-02&to=2035-01-04')).events.map((event) => event.id)).toEqual([first.id, middle.id, last.id]);
+    expect((await list('?from=0001-01-01')).events.map((event) => event.id)).toEqual([first.id, middle.id, last.id, outside.id]);
     expect((await list()).events).toHaveLength(4);
     expect((await list('?from=2035-01-06')).events).toEqual([]);
     expect((await list('?to=2034-12-31')).events).toEqual([]);
@@ -280,22 +229,13 @@ describe('Public workshop discovery (PostgreSQL)', () => {
     const response = await get('?from=2035-01-04&to=2035-01-02').expect(400);
     expect(response.body).toMatchObject({
       code: 'VALIDATION_ERROR',
-      fieldErrors: [
-        { field: 'to', message: 'To date must be on or after From date.' },
-      ],
+      fieldErrors: [{ field: 'to', message: 'To date must be on or after From date.' }],
     });
   });
 
   it('returns complete public details, confirmed-only counts, and no private data', async () => {
     const event = await seed({ scheduleRevision: 1 });
-    await prisma.reservation.create({
-      data: {
-        eventId: event.id,
-        userId: adminId,
-        bookedRevision: 1,
-        bookingReference: randomUUID(),
-      },
-    });
+    await prisma.reservation.create({ data: { eventId: event.id, userId: adminId, bookedRevision: 1, bookingReference: randomUUID() } });
     await prisma.reservation.create({
       data: {
         eventId: event.id,
@@ -333,9 +273,7 @@ describe('Public workshop discovery (PostgreSQL)', () => {
       startsAt: event.startsAt.toISOString(),
       endsAt: event.endsAt.toISOString(),
       registrationClosesAt: event.registrationClosesAt.toISOString(),
-      cancellationClosesAt: new Date(
-        event.startsAt.getTime() - 86400000,
-      ).toISOString(),
+      cancellationClosesAt: new Date(event.startsAt.getTime() - 86400000).toISOString(),
       capacity: 4,
       confirmedCount: 1,
       remainingPlaces: 3,
@@ -358,14 +296,7 @@ describe('Public workshop discovery (PostgreSQL)', () => {
       ].sort(),
     );
     expect(Object.keys(response.event).sort()).toEqual(
-      [
-        ...Object.keys(listed),
-        'description',
-        'venueAddress',
-        'cancellationClosesAt',
-        'cancelledAt',
-        'cancellationReason',
-      ].sort(),
+      [...Object.keys(listed), 'description', 'venueAddress', 'cancellationClosesAt', 'cancelledAt', 'cancellationReason'].sort(),
     );
     const json = JSON.stringify(response);
     expect(json).not.toContain(adminId);
@@ -385,30 +316,16 @@ describe('Public workshop discovery (PostgreSQL)', () => {
       registrationClosesAt: opens.registrationClosesAt,
       capacity: 1,
     });
-    await prisma.reservation.create({
-      data: {
-        eventId: full.id,
-        userId: attendeeId,
-        bookedRevision: 0,
-        bookingReference: randomUUID(),
-      },
-    });
+    await prisma.reservation.create({ data: { eventId: full.id, userId: attendeeId, bookedRevision: 0, bookingReference: randomUUID() } });
     expect((await detail(opens.id)).event.availability).toBe('AVAILABLE');
-    expect((await detail(full.id)).event).toMatchObject({
-      availability: 'FULL',
-      remainingPlaces: 0,
-    });
+    expect((await detail(full.id)).event).toMatchObject({ availability: 'FULL', remainingPlaces: 0 });
     expect((await list()).events).toHaveLength(2);
     const clock = jest.spyOn(Date, 'now');
     clock.mockReturnValue(now + 9999);
     expect((await detail(opens.id)).event.availability).toBe('AVAILABLE');
     clock.mockReturnValue(now + 10000);
-    expect((await detail(opens.id)).event.availability).toBe(
-      'REGISTRATION_CLOSED',
-    );
-    expect((await detail(full.id)).event.availability).toBe(
-      'REGISTRATION_CLOSED',
-    );
+    expect((await detail(opens.id)).event.availability).toBe('REGISTRATION_CLOSED');
+    expect((await detail(full.id)).event.availability).toBe('REGISTRATION_CLOSED');
     expect((await list()).events).toHaveLength(2);
     clock.mockReturnValue(now + 60000);
     expect((await detail(opens.id)).event.availability).toBe('STARTED');

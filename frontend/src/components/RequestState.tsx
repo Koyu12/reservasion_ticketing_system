@@ -1,5 +1,8 @@
+import { Button } from './ui/Button/Button'
+import { Alert } from './ui/Alert/Alert'
+
 export function LoadingState() {
-  return <p role="status">Loading…</p>
+  return <p className="py-8 text-[14px] text-muted" role="status">Loading…</p>
 }
 
 type ErrorStateProps = {
@@ -9,14 +12,13 @@ type ErrorStateProps = {
 
 export function ErrorState({ message, onRetry }: ErrorStateProps) {
   return (
-    <div>
-      <p role="alert">{message}</p>
-
+    <Alert kind="error">
+      <p>{message}</p>
       {onRetry && (
-        <button type="button" onClick={onRetry}>
+        <Button variant="text" className="mt-2" onClick={onRetry}>
           Try again
-        </button>
+        </Button>
       )}
-    </div>
+    </Alert>
   )
 }

@@ -1,8 +1,9 @@
+import { APP_CONFIG } from '../src/common/config.js';
 import 'dotenv/config';
 import { jest } from '@jest/globals';
 import { Test } from '@nestjs/testing';
-import { PrismaModule } from '../src/prisma/prisma.module.js';
-import { PrismaService } from '../src/prisma/prisma.service.js';
+import { CommonModule } from '../src/common/common.module.js';
+import { PrismaService } from '../src/common/prisma.service.js';
 import { randomUUID } from 'node:crypto';
 import { Client } from 'pg';
 
@@ -14,8 +15,7 @@ describe('Database test target guard', () => {
   });
 
   it('accepts the dedicated PostgreSQL test database', () => {
-    const url =
-      'postgresql://postgres@localhost:5432/reservation_ticketing_system_test';
+    const url = 'postgresql://postgres@localhost:5432/reservation_ticketing_system_test';
     expect(requireTestDatabaseUrl(url)).toBe(url);
   });
 
@@ -40,14 +40,13 @@ describe('Database test target guard', () => {
   });
 });
 
-describe('PrismaModule PostgreSQL integration', () => {
+describe('CommonModule PostgreSQL integration', () => {
   it('queries the test database through a shared provider and disconnects on shutdown', async () => {
-    const url = requireTestDatabaseUrl(
-      process.env.TEST_DATABASE_URL,
-      process.env.DATABASE_URL,
-    );
+    const url = requireTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env.DATABASE_URL);
     const originalUrl = process.env.DATABASE_URL;
-    const moduleBuilder = Test.createTestingModule({ imports: [PrismaModule] });
+    const moduleBuilder = Test.createTestingModule({ imports: [CommonModule] })
+      .overrideProvider(APP_CONFIG)
+      .useValue({ organizerContactEmail: 'organizer@example.invalid' });
     let app: Awaited<ReturnType<typeof moduleBuilder.compile>> | undefined;
     try {
       process.env.DATABASE_URL = url;
@@ -65,9 +64,7 @@ describe('PrismaModule PostgreSQL integration', () => {
         SELECT current_database() AS database
       `;
       expect(target[0].database).toBe('reservation_ticketing_system_test');
-      await expect(
-        prisma.$transaction((transaction) => transaction.event.count()),
-      ).resolves.toEqual(expect.any(Number));
+      await expect(prisma.$transaction((transaction) => transaction.event.count())).resolves.toEqual(expect.any(Number));
 
       const disconnect = jest.spyOn(prisma, '$disconnect');
       try {
@@ -95,17 +92,12 @@ describe('PostgreSQL business constraints', () => {
 
   beforeAll(async () => {
     database = new Client({
-      connectionString: requireTestDatabaseUrl(
-        process.env.TEST_DATABASE_URL,
-        process.env.DATABASE_URL,
-      ),
+      connectionString: requireTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env.DATABASE_URL),
       connectionTimeoutMillis: 5000,
       options: '-c search_path=public -c statement_timeout=5000',
     });
     await database.connect();
-    const result = await database.query<{ database: string }>(
-      'SELECT current_database() AS database',
-    );
+    const result = await database.query<{ database: string }>('SELECT current_database() AS database');
     expect(result.rows[0].database).toBe('reservation_ticketing_system_test');
   });
 
@@ -117,10 +109,10 @@ describe('PostgreSQL business constraints', () => {
     jobId = randomUUID();
     await database.query('BEGIN');
     transactionStarted = true;
-    await database.query(
-      `INSERT INTO "User" ("id", "name", "email") VALUES ($1, 'Test attendee', $2)`,
-      [userId, `${userId}@example.invalid`],
-    );
+    await database.query(`INSERT INTO "User" ("id", "name", "email") VALUES ($1, 'Test attendee', $2)`, [
+      userId,
+      `${userId}@example.invalid`,
+    ]);
     await database.query(
       `INSERT INTO "Event" (
         "id", "createdById", "title", "description", "venueName", "venueAddress",
@@ -154,10 +146,7 @@ describe('PostgreSQL business constraints', () => {
     await database.query('ROLLBACK');
     transactionStarted = false;
     if (userId) {
-      const result = await database.query<{ count: number }>(
-        `SELECT count(*)::int AS count FROM "User" WHERE "id" = $1`,
-        [userId],
-      );
+      const result = await database.query<{ count: number }>(`SELECT count(*)::int AS count FROM "User" WHERE "id" = $1`, [userId]);
       expect(result.rows[0].count).toBe(0);
     }
   });
@@ -184,17 +173,11 @@ describe('PostgreSQL business constraints', () => {
     );
   }
 
-  function update(
-    table: 'Event' | 'EventChange' | 'Reservation' | 'EmailJob',
-    id: string,
-    fields: Record<string, unknown>,
-  ) {
+  function update(table: 'Event' | 'EventChange' | 'Reservation' | 'EmailJob', id: string, fields: Record<string, unknown>) {
     // Identifiers come only from the fixed test cases below; values are parameters.
     const entries = Object.entries(fields);
     return database.query(
-      `UPDATE "${table}" SET ${entries
-        .map(([key], index) => `"${key}" = $${index + 1}`)
-        .join(', ')} WHERE "id" = $${entries.length + 1}`,
+      `UPDATE "${table}" SET ${entries.map(([key], index) => `"${key}" = $${index + 1}`).join(', ')} WHERE "id" = $${entries.length + 1}`,
       [...entries.map(([, value]) => value), id],
     );
   }
@@ -230,58 +213,25 @@ describe('PostgreSQL business constraints', () => {
   it.each([
     ['zero capacity', { capacity: 0 }, 'Event_capacity_positive'],
     ['negative capacity', { capacity: -1 }, 'Event_capacity_positive'],
-    [
-      'end equal to start',
-      { endsAt: '2030-01-10 09:00+07' },
-      'Event_schedule_valid',
-    ],
-    [
-      'end before start',
-      { endsAt: '2030-01-10 08:00+07' },
-      'Event_schedule_valid',
-    ],
-    [
-      'late registration deadline',
-      { registrationClosesAt: '2030-01-10 10:00+07' },
-      'Event_registration_deadline_valid',
-    ],
-    [
-      'negative revision',
-      { scheduleRevision: -1 },
-      'Event_revision_nonnegative',
-    ],
+    ['end equal to start', { endsAt: '2030-01-10 09:00+07' }, 'Event_schedule_valid'],
+    ['end before start', { endsAt: '2030-01-10 08:00+07' }, 'Event_schedule_valid'],
+    ['late registration deadline', { registrationClosesAt: '2030-01-10 10:00+07' }, 'Event_registration_deadline_valid'],
+    ['negative revision', { scheduleRevision: -1 }, 'Event_revision_nonnegative'],
   ])('rejects an event with %s', async (_label, fields, constraint) => {
-    await expect(update('Event', eventId, fields)).rejects.toMatchObject({
-      code: '23514',
-      constraint,
-    });
+    await expect(update('Event', eventId, fields)).rejects.toMatchObject({ code: '23514', constraint });
   });
 
   it('accepts a deadline equal to the start and positive capacity', async () => {
-    await expect(
-      update('Event', eventId, {
-        capacity: 1,
-        registrationClosesAt: '2030-01-10 09:00+07',
-      }),
-    ).resolves.toMatchObject({ rowCount: 1 });
+    await expect(update('Event', eventId, { capacity: 1, registrationClosesAt: '2030-01-10 09:00+07' })).resolves.toMatchObject({
+      rowCount: 1,
+    });
   });
 
-  it.each([null, '', ' \t\n'])(
-    'rejects event cancellation reason %p',
-    async (reason) => {
-      await expect(
-        update('Event', eventId, {
-          status: 'CANCELLED',
-          cancelledAt: now,
-          cancelledById: userId,
-          cancellationReason: reason,
-        }),
-      ).rejects.toMatchObject({
-        code: '23514',
-        constraint: 'Event_cancellation_metadata_valid',
-      });
-    },
-  );
+  it.each([null, '', ' \t\n'])('rejects event cancellation reason %p', async (reason) => {
+    await expect(
+      update('Event', eventId, { status: 'CANCELLED', cancelledAt: now, cancelledById: userId, cancellationReason: reason }),
+    ).rejects.toMatchObject({ code: '23514', constraint: 'Event_cancellation_metadata_valid' });
+  });
 
   it('accepts an event cancellation with its actor, time, and reason', async () => {
     await expect(
@@ -296,162 +246,78 @@ describe('PostgreSQL business constraints', () => {
 
   it.each([
     ['zero revision', { revision: 0 }, 'EventChange_revision_positive'],
-    [
-      'invalid old schedule',
-      { oldEndsAt: '2030-01-10 08:00+07' },
-      'EventChange_old_schedule_valid',
-    ],
-    [
-      'invalid new schedule',
-      { newEndsAt: '2030-01-11 09:00+07' },
-      'EventChange_new_schedule_valid',
-    ],
+    ['invalid old schedule', { oldEndsAt: '2030-01-10 08:00+07' }, 'EventChange_old_schedule_valid'],
+    ['invalid new schedule', { newEndsAt: '2030-01-11 09:00+07' }, 'EventChange_new_schedule_valid'],
     ['empty reason', { reason: '' }, 'EventChange_reason_nonblank'],
     ['whitespace reason', { reason: ' \t\n' }, 'EventChange_reason_nonblank'],
   ])('rejects a change with %s', async (_label, fields, constraint) => {
-    await expect(update('EventChange', changeId, fields)).rejects.toMatchObject(
-      { code: '23514', constraint },
-    );
+    await expect(update('EventChange', changeId, fields)).rejects.toMatchObject({ code: '23514', constraint });
   });
 
   it('rejects a negative booked revision', async () => {
-    await expect(
-      update('Reservation', reservationId, { bookedRevision: -1 }),
-    ).rejects.toMatchObject({
+    await expect(update('Reservation', reservationId, { bookedRevision: -1 })).rejects.toMatchObject({
       code: '23514',
       constraint: 'Reservation_booked_revision_nonnegative',
     });
   });
 
-  describe.each(['ADMIN', 'EVENT_CANCELLED'])(
-    '%s reservation cancellation',
-    (source) => {
-      it.each([null, '', ' \t\n'])('rejects reason %p', async (reason) => {
-        await expect(
-          update('Reservation', reservationId, {
-            status: 'CANCELLED',
-            cancelledAt: now,
-            cancelledById: userId,
-            cancellationSource: source,
-            cancellationReason: reason,
-          }),
-        ).rejects.toMatchObject({
-          code: '23514',
-          constraint: 'Reservation_cancellation_metadata_valid',
-        });
-      });
+  describe.each(['ADMIN', 'EVENT_CANCELLED'])('%s reservation cancellation', (source) => {
+    it.each([null, '', ' \t\n'])('rejects reason %p', async (reason) => {
+      await expect(
+        update('Reservation', reservationId, {
+          status: 'CANCELLED',
+          cancelledAt: now,
+          cancelledById: userId,
+          cancellationSource: source,
+          cancellationReason: reason,
+        }),
+      ).rejects.toMatchObject({ code: '23514', constraint: 'Reservation_cancellation_metadata_valid' });
+    });
 
-      it('accepts a nonblank reason', async () => {
-        await expect(
-          update('Reservation', reservationId, {
-            status: 'CANCELLED',
-            cancelledAt: now,
-            cancelledById: userId,
-            cancellationSource: source,
-            cancellationReason: 'Organizer cancelled',
-          }),
-        ).resolves.toMatchObject({ rowCount: 1 });
-      });
-    },
-  );
+    it('accepts a nonblank reason', async () => {
+      await expect(
+        update('Reservation', reservationId, {
+          status: 'CANCELLED',
+          cancelledAt: now,
+          cancelledById: userId,
+          cancellationSource: source,
+          cancellationReason: 'Organizer cancelled',
+        }),
+      ).resolves.toMatchObject({ rowCount: 1 });
+    });
+  });
 
   it.each([
-    [
-      'negative total attempts',
-      { attemptCount: -1 },
-      'EmailJob_attempt_counts_valid',
-    ],
-    [
-      'negative cycle attempts',
-      { retryCycleAttemptCount: -1 },
-      'EmailJob_attempt_counts_valid',
-    ],
-    [
-      'cycle greater than total',
-      { attemptCount: 1, retryCycleAttemptCount: 2 },
-      'EmailJob_attempt_counts_valid',
-    ],
-    [
-      'missing change context',
-      { eventChangeId: null },
-      'EmailJob_change_context_valid',
-    ],
-    [
-      'unexpected change context',
-      { type: 'BOOKING_CONFIRMED' },
-      'EmailJob_change_context_valid',
-    ],
-    [
-      'manual retry time without actor',
-      { lastManualRetryAt: now },
-      'EmailJob_manual_retry_metadata_valid',
-    ],
-    [
-      'pending job without retry time',
-      { nextAttemptAt: null },
-      'EmailJob_state_metadata_valid',
-    ],
-    [
-      'pending job with a claim',
-      { claimToken: randomUUID() },
-      'EmailJob_state_metadata_valid',
-    ],
-    [
-      'pending job with sent time',
-      { sentAt: now },
-      'EmailJob_state_metadata_valid',
-    ],
-    [
-      'pending job with skip metadata',
-      { skippedAt: now, skipReason: 'Obsolete' },
-      'EmailJob_state_metadata_valid',
-    ],
+    ['negative total attempts', { attemptCount: -1 }, 'EmailJob_attempt_counts_valid'],
+    ['negative cycle attempts', { retryCycleAttemptCount: -1 }, 'EmailJob_attempt_counts_valid'],
+    ['cycle greater than total', { attemptCount: 1, retryCycleAttemptCount: 2 }, 'EmailJob_attempt_counts_valid'],
+    ['missing change context', { eventChangeId: null }, 'EmailJob_change_context_valid'],
+    ['unexpected change context', { type: 'BOOKING_CONFIRMED' }, 'EmailJob_change_context_valid'],
+    ['manual retry time without actor', { lastManualRetryAt: now }, 'EmailJob_manual_retry_metadata_valid'],
+    ['pending job without retry time', { nextAttemptAt: null }, 'EmailJob_state_metadata_valid'],
+    ['pending job with a claim', { claimToken: randomUUID() }, 'EmailJob_state_metadata_valid'],
+    ['pending job with sent time', { sentAt: now }, 'EmailJob_state_metadata_valid'],
+    ['pending job with skip metadata', { skippedAt: now, skipReason: 'Obsolete' }, 'EmailJob_state_metadata_valid'],
     [
       'processing job without expiry',
       { status: 'PROCESSING', nextAttemptAt: null, claimToken: randomUUID() },
       'EmailJob_state_metadata_valid',
     ],
-    [
-      'sent job without sent time',
-      { status: 'SENT', nextAttemptAt: null },
-      'EmailJob_state_metadata_valid',
-    ],
-    [
-      'failed job without error',
-      { status: 'FAILED', nextAttemptAt: null },
-      'EmailJob_state_metadata_valid',
-    ],
-    [
-      'failed job with blank error',
-      { status: 'FAILED', nextAttemptAt: null, lastError: ' \t\n' },
-      'EmailJob_state_metadata_valid',
-    ],
-    [
-      'skipped job without reason',
-      { status: 'SKIPPED', nextAttemptAt: null, skippedAt: now },
-      'EmailJob_state_metadata_valid',
-    ],
+    ['sent job without sent time', { status: 'SENT', nextAttemptAt: null }, 'EmailJob_state_metadata_valid'],
+    ['failed job without error', { status: 'FAILED', nextAttemptAt: null }, 'EmailJob_state_metadata_valid'],
+    ['failed job with blank error', { status: 'FAILED', nextAttemptAt: null, lastError: ' \t\n' }, 'EmailJob_state_metadata_valid'],
+    ['skipped job without reason', { status: 'SKIPPED', nextAttemptAt: null, skippedAt: now }, 'EmailJob_state_metadata_valid'],
     [
       'skipped job with blank reason',
-      {
-        status: 'SKIPPED',
-        nextAttemptAt: null,
-        skippedAt: now,
-        skipReason: ' \t\n',
-      },
+      { status: 'SKIPPED', nextAttemptAt: null, skippedAt: now, skipReason: ' \t\n' },
       'EmailJob_state_metadata_valid',
     ],
   ])('rejects email metadata: %s', async (_label, fields, constraint) => {
-    await expect(update('EmailJob', jobId, fields)).rejects.toMatchObject({
-      code: '23514',
-      constraint,
-    });
+    await expect(update('EmailJob', jobId, fields)).rejects.toMatchObject({ code: '23514', constraint });
   });
 
   it('rejects a manual retry actor without a timestamp', async () => {
-    await expect(
-      update('EmailJob', jobId, { lastManualRetryById: userId }),
-    ).rejects.toMatchObject({
+    await expect(update('EmailJob', jobId, { lastManualRetryById: userId })).rejects.toMatchObject({
       code: '23514',
       constraint: 'EmailJob_manual_retry_metadata_valid',
     });
@@ -459,48 +325,22 @@ describe('PostgreSQL business constraints', () => {
 
   it('accepts complete manual retry metadata and reset cycle counters', async () => {
     await expect(
-      update('EmailJob', jobId, {
-        lastManualRetryById: userId,
-        lastManualRetryAt: now,
-        attemptCount: 3,
-        retryCycleAttemptCount: 0,
-      }),
+      update('EmailJob', jobId, { lastManualRetryById: userId, lastManualRetryAt: now, attemptCount: 3, retryCycleAttemptCount: 0 }),
     ).resolves.toMatchObject({ rowCount: 1 });
   });
 
   it.each([
     ['PENDING', { nextAttemptAt: now }],
-    [
-      'PROCESSING',
-      { nextAttemptAt: null, claimToken: randomUUID(), claimExpiresAt: now },
-    ],
-    [
-      'SENT',
-      { nextAttemptAt: null, sentAt: now, lastError: 'Earlier timeout' },
-    ],
+    ['PROCESSING', { nextAttemptAt: null, claimToken: randomUUID(), claimExpiresAt: now }],
+    ['SENT', { nextAttemptAt: null, sentAt: now, lastError: 'Earlier timeout' }],
     ['FAILED', { nextAttemptAt: null, lastError: 'Provider timeout' }],
-    [
-      'SKIPPED',
-      { nextAttemptAt: null, skippedAt: now, skipReason: 'Obsolete notice' },
-    ],
+    ['SKIPPED', { nextAttemptAt: null, skippedAt: now, skipReason: 'Obsolete notice' }],
   ])('accepts a valid %s email state', async (status, fields) => {
-    await expect(
-      update('EmailJob', jobId, { ...fields, status }),
-    ).resolves.toMatchObject({ rowCount: 1 });
+    await expect(update('EmailJob', jobId, { ...fields, status })).resolves.toMatchObject({ rowCount: 1 });
   });
 
-  it.each(['User', 'Event', 'EventChange', 'Reservation'] as const)(
-    'prevents deletion of referenced %s history',
-    async (table) => {
-      const ids = {
-        User: userId,
-        Event: eventId,
-        EventChange: changeId,
-        Reservation: reservationId,
-      };
-      await expect(
-        database.query(`DELETE FROM "${table}" WHERE "id" = $1`, [ids[table]]),
-      ).rejects.toMatchObject({ code: '23503' });
-    },
-  );
+  it.each(['User', 'Event', 'EventChange', 'Reservation'] as const)('prevents deletion of referenced %s history', async (table) => {
+    const ids = { User: userId, Event: eventId, EventChange: changeId, Reservation: reservationId };
+    await expect(database.query(`DELETE FROM "${table}" WHERE "id" = $1`, [ids[table]])).rejects.toMatchObject({ code: '23503' });
+  });
 });
