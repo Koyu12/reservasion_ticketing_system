@@ -9,11 +9,7 @@ export class ApplicationOriginGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<Request>();
-    if (
-      ['GET', 'HEAD', 'OPTIONS'].includes(request.method) ||
-      !request.headers.cookie
-    )
-      return true;
+    if (['GET', 'HEAD', 'OPTIONS'].includes(request.method) || !request.headers.cookie) return true;
     let origin = request.get('origin');
     if (!origin && request.get('referer')) {
       try {

@@ -1,3 +1,4 @@
+import { APP_CONFIG } from '../src/common/config.js';
 import 'dotenv/config';
 import { Body, Controller, Logger, Post, UseGuards } from '@nestjs/common';
 import { jest } from '@jest/globals';
@@ -8,10 +9,10 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
-import { PrismaService } from '../src/prisma/prisma.service.js';
+import { PrismaService } from '../src/common/prisma.service.js';
 import { requireTestDatabaseUrl } from './test-database.js';
 import { EmailService } from '../src/email/email.service.js';
-import type { EmailMessage } from '../src/email/email.service.js';
+import type { EmailMessage } from '../src/email/email.validation.js';
 import { VerifiedEmailGuard } from '../src/auth/verified-email.guard.js';
 import { promoteAdmin } from '../src/auth/promote-admin.js';
 
@@ -34,41 +35,29 @@ describe('Email/password authentication (PostgreSQL)', () => {
   let prisma: PrismaService;
   let email: string;
   let authSecret: string;
-  const sendEmail =
-    jest.fn<(message: EmailMessage) => Promise<{ id: string }>>();
+  const sendEmail = jest.fn<(message: EmailMessage) => Promise<{ id: string }>>();
   const origin = 'http://localhost:5173';
   const password = 'Test-password-12345!';
 
   beforeAll(async () => {
-    const url = requireTestDatabaseUrl(
-      process.env.TEST_DATABASE_URL,
-      process.env.DATABASE_URL,
-    );
+    const url = requireTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env.DATABASE_URL);
     authSecret = randomBytes(32).toString('hex');
-    const settings = {
-      DATABASE_URL: url,
-      BETTER_AUTH_SECRET: authSecret,
-      BETTER_AUTH_URL: 'http://localhost:3000',
-      FRONTEND_URL: origin,
-    };
+    const settings = { DATABASE_URL: url, BETTER_AUTH_SECRET: authSecret, BETTER_AUTH_URL: 'http://localhost:3000', FRONTEND_URL: origin };
     const previous: Record<string, string | undefined> = {};
     try {
       for (const [key, value] of Object.entries(settings)) {
         previous[key] = process.env[key];
         process.env[key] = value;
       }
-      const module = await Test.createTestingModule({
-        imports: [AppModule],
-        controllers: [JsonProbeController],
-      })
+      const module = await Test.createTestingModule({ imports: [AppModule], controllers: [JsonProbeController] })
         .overrideProvider(EmailService)
         .useValue({ send: sendEmail })
+        .overrideProvider(APP_CONFIG)
+        .useValue({ organizerContactEmail: 'organizer@example.invalid' })
         .compile();
       app = module.createNestApplication({ bodyParser: false });
       prisma = app.get(PrismaService);
-      const target = await prisma.$queryRaw<
-        { database: string }[]
-      >`SELECT current_database() AS database`;
+      const target = await prisma.$queryRaw<{ database: string }[]>`SELECT current_database() AS database`;
       expect(target[0].database).toBe('reservation_ticketing_system_test');
       await app.init();
     } finally {
@@ -89,12 +78,7 @@ describe('Email/password authentication (PostgreSQL)', () => {
     if (prisma && email) {
       const user = await prisma.user.findUnique({ where: { email } });
       if (user) {
-        await prisma.verification.deleteMany({
-          where: {
-            value: user.id,
-            identifier: { startsWith: 'reset-password:' },
-          },
-        });
+        await prisma.verification.deleteMany({ where: { value: user.id, identifier: { startsWith: 'reset-password:' } } });
         await prisma.user.delete({ where: { id: user.id } });
       }
     }
@@ -127,18 +111,11 @@ describe('Email/password authentication (PostgreSQL)', () => {
   }
 
   function checkBooking(cookie: string[]) {
-    return request(app.getHttpServer())
-      .post('/api/test-json/booking-eligibility')
-      .set('Origin', origin)
-      .set('Cookie', cookie)
-      .send({});
+    return request(app.getHttpServer()).post('/api/test-json/booking-eligibility').set('Origin', origin).set('Cookie', cookie).send({});
   }
 
   function requestReset(redirectTo = `${origin}/reset-password`) {
-    return request(app.getHttpServer())
-      .post('/api/auth/request-password-reset')
-      .set('Origin', origin)
-      .send({ email, redirectTo });
+    return request(app.getHttpServer()).post('/api/auth/request-password-reset').set('Origin', origin).send({ email, redirectTo });
   }
 
   function resetLink() {
@@ -151,32 +128,19 @@ describe('Email/password authentication (PostgreSQL)', () => {
     return new URL(match![0]);
   }
 
-  function resetPassword(
-    token: string,
-    newPassword = 'Replacement-password-12345!',
-  ) {
-    return request(app.getHttpServer())
-      .post('/api/auth/reset-password')
-      .set('Origin', origin)
-      .send({ token, newPassword });
+  function resetPassword(token: string, newPassword = 'Replacement-password-12345!') {
+    return request(app.getHttpServer()).post('/api/auth/reset-password').set('Origin', origin).send({ token, newPassword });
   }
 
   it('register_as_attendee: stores credentials and an HTTP-only database session', async () => {
     const response = await signup().expect(200);
-    expect(response.body).toMatchObject({
-      user: { email, role: 'ATTENDEE', emailVerified: false },
-    });
-    const user = await prisma.user.findUniqueOrThrow({
-      where: { email },
-      include: { account: true, session: true },
-    });
+    expect(response.body).toMatchObject({ user: { email, role: 'ATTENDEE', emailVerified: false } });
+    const user = await prisma.user.findUniqueOrThrow({ where: { email }, include: { account: true, session: true } });
     expect(user.role).toBe('ATTENDEE');
     expect(user.account[0].password).toBeTruthy();
     expect(user.account[0].password).not.toBe(password);
     expect(user.session).toHaveLength(1);
-    expect(response.headers['set-cookie']).toEqual(
-      expect.arrayContaining([expect.stringMatching(/HttpOnly/i)]),
-    );
+    expect(response.headers['set-cookie']).toEqual(expect.arrayContaining([expect.stringMatching(/HttpOnly/i)]));
   });
 
   it('login_restores_database_session: authenticates again after logout and survives another request', async () => {
@@ -193,33 +157,19 @@ describe('Email/password authentication (PostgreSQL)', () => {
       .send({ email, password })
       .expect(200);
     for (let i = 0; i < 2; i++) {
-      const session = await request(app.getHttpServer())
-        .get('/api/session')
-        .set('Cookie', cookies(login))
-        .expect(200);
+      const session = await request(app.getHttpServer()).get('/api/session').set('Cookie', cookies(login)).expect(200);
       expect(session.body).toMatchObject({ user: { email, role: 'ATTENDEE' } });
       expect(session.body).not.toHaveProperty('session');
     }
-    const user = await prisma.user.findUniqueOrThrow({
-      where: { email },
-      include: { session: true },
-    });
+    const user = await prisma.user.findUniqueOrThrow({ where: { email }, include: { session: true } });
     expect(user.session).toHaveLength(1);
   });
 
   it('logout_ends_session: revokes the stored session and rejects the old cookie', async () => {
     const registered = await signup().expect(200);
     const cookie = cookies(registered);
-    await request(app.getHttpServer())
-      .post('/api/auth/sign-out')
-      .set('Origin', origin)
-      .set('Cookie', cookie)
-      .send({})
-      .expect(200);
-    await request(app.getHttpServer())
-      .get('/api/session')
-      .set('Cookie', cookie)
-      .expect(401);
+    await request(app.getHttpServer()).post('/api/auth/sign-out').set('Origin', origin).set('Cookie', cookie).send({}).expect(200);
+    await request(app.getHttpServer()).get('/api/session').set('Cookie', cookie).expect(401);
     expect(await prisma.session.count({ where: { user: { email } } })).toBe(0);
   });
 
@@ -231,10 +181,7 @@ describe('Email/password authentication (PostgreSQL)', () => {
   it('rejects the cookie once its database session is revoked', async () => {
     const registered = await signup().expect(200);
     await prisma.session.deleteMany({ where: { user: { email } } });
-    await request(app.getHttpServer())
-      .get('/api/session')
-      .set('Cookie', cookies(registered))
-      .expect(401);
+    await request(app.getHttpServer()).get('/api/session').set('Cookie', cookies(registered)).expect(401);
   });
 
   it('rejects role injection through profile updates', async () => {
@@ -286,9 +233,7 @@ describe('Email/password authentication (PostgreSQL)', () => {
     'rejects cookie-authenticated application mutations with origin %s',
     async (requestOrigin) => {
       const registered = await signup().expect(200);
-      const mutation = request(app.getHttpServer())
-        .post('/api/test-json')
-        .set('Cookie', cookies(registered));
+      const mutation = request(app.getHttpServer()).post('/api/test-json').set('Cookie', cookies(registered));
       if (requestOrigin) mutation.set('Origin', requestOrigin);
       await mutation.send({ message: 'must not execute' }).expect(403);
     },
@@ -301,37 +246,25 @@ describe('Email/password authentication (PostgreSQL)', () => {
     expect(link.pathname).toBe('/api/auth/verify-email');
     expect(link.searchParams.get('callbackURL')).toBe(`${origin}/verify-email`);
     expect(link.searchParams.get('token')).toBeTruthy();
-    expect(
-      await prisma.emailJob.count({ where: { recipientEmail: email } }),
-    ).toBe(0);
+    expect(await prisma.emailJob.count({ where: { recipientEmail: email } })).toBe(0);
   });
 
   it('unverified_user_cannot_book: permits a session but rejects the booking guard', async () => {
     const response = await signup().expect(200);
-    await request(app.getHttpServer())
-      .get('/api/session')
-      .set('Cookie', cookies(response))
-      .expect(200);
+    await request(app.getHttpServer()).get('/api/session').set('Cookie', cookies(response)).expect(200);
     await checkBooking(cookies(response)).expect(403);
     await request(app.getHttpServer()).get('/').expect(200);
   });
 
   it('verified_user_is_eligible: follows the link and refreshes the existing session', async () => {
-    const response = await signup({
-      callbackURL: `${origin}/verify-email`,
-    }).expect(200);
+    const response = await signup({ callbackURL: `${origin}/verify-email` }).expect(200);
     const link = verificationLink();
     await request(app.getHttpServer())
       .get(link.pathname + link.search)
       .expect(302)
       .expect('Location', `${origin}/verify-email`);
-    const session = await request(app.getHttpServer())
-      .get('/api/session')
-      .set('Cookie', cookies(response))
-      .expect(200);
-    expect(session.body).toMatchObject({
-      user: { email, emailVerified: true },
-    });
+    const session = await request(app.getHttpServer()).get('/api/session').set('Cookie', cookies(response)).expect(200);
+    expect(session.body).toMatchObject({ user: { email, emailVerified: true } });
     await checkBooking(cookies(response)).expect(201, { eligible: true });
   });
 
@@ -355,19 +288,12 @@ describe('Email/password authentication (PostgreSQL)', () => {
       .expect(302)
       .expect('Location', `${origin}/verify-email?error=INVALID_TOKEN`);
     await checkBooking(cookies(response)).expect(403);
-    expect(
-      (await prisma.user.findUniqueOrThrow({ where: { email } })).emailVerified,
-    ).toBe(false);
+    expect((await prisma.user.findUniqueOrThrow({ where: { email } })).emailVerified).toBe(false);
   });
 
   it('rejects an expired token and allows requesting another link', async () => {
     const response = await signup().expect(200);
-    const token = await createEmailVerificationToken(
-      authSecret,
-      email,
-      undefined,
-      -1,
-    );
+    const token = await createEmailVerificationToken(authSecret, email, undefined, -1);
     await request(app.getHttpServer())
       .get('/api/auth/verify-email')
       .query({ token, callbackURL: `${origin}/verify-email` })
@@ -385,18 +311,12 @@ describe('Email/password authentication (PostgreSQL)', () => {
   });
 
   it('keeps the account after delivery failure and supports resend without leaking details', async () => {
-    const warning = jest
-      .spyOn(Logger.prototype, 'warn')
-      .mockImplementation(() => undefined);
+    const warning = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     sendEmail.mockRejectedValueOnce(new Error('Sensitive provider details'));
     const response = await signup().expect(200);
     expect(await prisma.user.findUnique({ where: { email } })).not.toBeNull();
-    expect(warning).toHaveBeenCalledWith(
-      'Verification email delivery failed; request a new link.',
-    );
-    expect(JSON.stringify(response.body)).not.toContain(
-      'Sensitive provider details',
-    );
+    expect(warning).toHaveBeenCalledWith('Verification email delivery failed; request a new link.');
+    expect(JSON.stringify(response.body)).not.toContain('Sensitive provider details');
     sendEmail.mockClear();
     await request(app.getHttpServer())
       .post('/api/auth/send-verification-email')
@@ -414,23 +334,16 @@ describe('Email/password authentication (PostgreSQL)', () => {
     const link = resetLink();
     expect(link.origin).toBe('http://localhost:3000');
     expect(link.pathname.startsWith('/api/auth/reset-password/')).toBe(true);
-    expect(link.searchParams.get('callbackURL')).toBe(
-      `${origin}/reset-password`,
-    );
+    expect(link.searchParams.get('callbackURL')).toBe(`${origin}/reset-password`);
     sendEmail.mockClear();
     const unknown = await request(app.getHttpServer())
       .post('/api/auth/request-password-reset')
       .set('Origin', origin)
-      .send({
-        email: `missing-${email}`,
-        redirectTo: `${origin}/reset-password`,
-      })
+      .send({ email: `missing-${email}`, redirectTo: `${origin}/reset-password` })
       .expect(200);
     expect(unknown.body).toEqual(existing.body);
     expect(sendEmail).not.toHaveBeenCalled();
-    expect(
-      await prisma.emailJob.count({ where: { recipientEmail: email } }),
-    ).toBe(0);
+    expect(await prisma.emailJob.count({ where: { recipientEmail: email } })).toBe(0);
   });
 
   it('resets the password, revokes every session, and rejects reuse of the link', async () => {
@@ -448,24 +361,15 @@ describe('Email/password authentication (PostgreSQL)', () => {
       .get(link.pathname + link.search)
       .expect(302);
     const destination = new URL(callback.headers.location);
-    expect(destination.origin + destination.pathname).toBe(
-      `${origin}/reset-password`,
-    );
+    expect(destination.origin + destination.pathname).toBe(`${origin}/reset-password`);
     const token = destination.searchParams.get('token')!;
     expect(token).toBeTruthy();
     await resetPassword(token).expect(200);
     expect(await prisma.session.count({ where: { user: { email } } })).toBe(0);
     for (const response of [registered, login]) {
-      await request(app.getHttpServer())
-        .get('/api/session')
-        .set('Cookie', cookies(response))
-        .expect(401);
+      await request(app.getHttpServer()).get('/api/session').set('Cookie', cookies(response)).expect(401);
     }
-    await request(app.getHttpServer())
-      .post('/api/auth/sign-in/email')
-      .set('Origin', origin)
-      .send({ email, password })
-      .expect(401);
+    await request(app.getHttpServer()).post('/api/auth/sign-in/email').set('Origin', origin).send({ email, password }).expect(401);
     await request(app.getHttpServer())
       .post('/api/auth/sign-in/email')
       .set('Origin', origin)
@@ -477,11 +381,7 @@ describe('Email/password authentication (PostgreSQL)', () => {
   it('rejects invalid reset tokens without changing the existing password', async () => {
     await signup().expect(200);
     await resetPassword('invalid-token').expect(400);
-    await request(app.getHttpServer())
-      .post('/api/auth/sign-in/email')
-      .set('Origin', origin)
-      .send({ email, password })
-      .expect(200);
+    await request(app.getHttpServer()).post('/api/auth/sign-in/email').set('Origin', origin).send({ email, password }).expect(200);
   });
 
   it('rejects expired reset links and keeps the old password usable', async () => {
@@ -501,11 +401,7 @@ describe('Email/password authentication (PostgreSQL)', () => {
       .expect(302)
       .expect('Location', `${origin}/reset-password?error=INVALID_TOKEN`);
     await resetPassword(token).expect(400);
-    await request(app.getHttpServer())
-      .post('/api/auth/sign-in/email')
-      .set('Origin', origin)
-      .send({ email, password })
-      .expect(200);
+    await request(app.getHttpServer()).post('/api/auth/sign-in/email').set('Origin', origin).send({ email, password }).expect(200);
   });
 
   it('does not consume a reset token when the new password is rejected', async () => {
@@ -526,25 +422,13 @@ describe('Email/password authentication (PostgreSQL)', () => {
 
   it('sanitizes recovery delivery failures and permits requesting a new link', async () => {
     await signup().expect(200);
-    const warning = jest
-      .spyOn(Logger.prototype, 'warn')
-      .mockImplementation(() => undefined);
+    const warning = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     sendEmail.mockClear();
-    sendEmail.mockRejectedValueOnce(
-      new Error('Sensitive reset-provider details'),
-    );
+    sendEmail.mockRejectedValueOnce(new Error('Sensitive reset-provider details'));
     const response = await requestReset().expect(200);
-    expect(JSON.stringify(response.body)).not.toContain(
-      'Sensitive reset-provider details',
-    );
-    expect(warning).toHaveBeenCalledWith(
-      'Password reset email delivery failed; request a new link.',
-    );
-    await request(app.getHttpServer())
-      .post('/api/auth/sign-in/email')
-      .set('Origin', origin)
-      .send({ email, password })
-      .expect(200);
+    expect(JSON.stringify(response.body)).not.toContain('Sensitive reset-provider details');
+    expect(warning).toHaveBeenCalledWith('Password reset email delivery failed; request a new link.');
+    await request(app.getHttpServer()).post('/api/auth/sign-in/email').set('Origin', origin).send({ email, password }).expect(200);
     sendEmail.mockClear();
     await requestReset().expect(200);
     resetLink();
@@ -557,28 +441,15 @@ describe('Email/password authentication (PostgreSQL)', () => {
 
   it('refuses to promote an unverified attendee', async () => {
     await signup().expect(200);
-    await expect(promoteAdmin(prisma, email)).rejects.toThrow(
-      'Verify the email before promoting this user',
-    );
-    expect(
-      (await prisma.user.findUniqueOrThrow({ where: { email } })).role,
-    ).toBe('ATTENDEE');
+    await expect(promoteAdmin(prisma, email)).rejects.toThrow('Verify the email before promoting this user');
+    expect((await prisma.user.findUniqueOrThrow({ where: { email } })).role).toBe('ATTENDEE');
   });
 
   it('promotes only the role, normalizes the email, and is safe to repeat', async () => {
     await signup().expect(200);
-    const before = await prisma.user.update({
-      where: { email },
-      data: { emailVerified: true },
-      include: { account: true, session: true },
-    });
-    await expect(
-      promoteAdmin(prisma, ` ${email.toUpperCase()} `),
-    ).resolves.toBe('promoted');
-    const after = await prisma.user.findUniqueOrThrow({
-      where: { email },
-      include: { account: true, session: true },
-    });
+    const before = await prisma.user.update({ where: { email }, data: { emailVerified: true }, include: { account: true, session: true } });
+    await expect(promoteAdmin(prisma, ` ${email.toUpperCase()} `)).resolves.toBe('promoted');
+    const after = await prisma.user.findUniqueOrThrow({ where: { email }, include: { account: true, session: true } });
     expect(after).toMatchObject({
       id: before.id,
       name: before.name,
@@ -599,43 +470,22 @@ describe('Email/password authentication (PostgreSQL)', () => {
 
   it('rejects attendee admin access', async () => {
     const response = await signup().expect(200);
-    await request(app.getHttpServer())
-      .get('/api/admin/access')
-      .set('Cookie', cookies(response))
-      .expect(403);
+    await request(app.getHttpServer()).get('/api/admin/access').set('Cookie', cookies(response)).expect(403);
   });
 
   it('permits an admin and immediately rejects the same session after demotion', async () => {
     const response = await signup().expect(200);
-    await prisma.user.update({
-      where: { email },
-      data: { emailVerified: true },
-    });
+    await prisma.user.update({ where: { email }, data: { emailVerified: true } });
     await promoteAdmin(prisma, email);
     const cookie = cookies(response);
-    await request(app.getHttpServer())
-      .get('/api/admin/access')
-      .set('Cookie', cookie)
-      .expect(200, { allowed: true });
-    const session = await request(app.getHttpServer())
-      .get('/api/session')
-      .set('Cookie', cookie)
-      .expect(200);
+    await request(app.getHttpServer()).get('/api/admin/access').set('Cookie', cookie).expect(200, { allowed: true });
+    const session = await request(app.getHttpServer()).get('/api/session').set('Cookie', cookie).expect(200);
     expect(session.body).toMatchObject({ user: { email, role: 'ADMIN' } });
     await checkBooking(cookie).expect(201, { eligible: true });
-    await prisma.user.update({
-      where: { email },
-      data: { emailVerified: false },
-    });
+    await prisma.user.update({ where: { email }, data: { emailVerified: false } });
     await checkBooking(cookie).expect(403);
     await prisma.user.update({ where: { email }, data: { role: 'ATTENDEE' } });
-    await request(app.getHttpServer())
-      .get('/api/admin/access')
-      .set('Cookie', cookie)
-      .expect(403);
-    await request(app.getHttpServer())
-      .get('/api/session')
-      .set('Cookie', cookie)
-      .expect(200);
+    await request(app.getHttpServer()).get('/api/admin/access').set('Cookie', cookie).expect(403);
+    await request(app.getHttpServer()).get('/api/session').set('Cookie', cookie).expect(200);
   });
 });

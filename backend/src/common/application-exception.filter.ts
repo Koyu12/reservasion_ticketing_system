@@ -11,19 +11,11 @@ export class ApplicationExceptionFilter implements ExceptionFilter {
     if (error instanceof HttpException && error.getStatus() !== 500) {
       const body = error.getResponse();
       const details = typeof body === 'string' ? { message: body } : body;
-      response.status(error.getStatus()).json({
-        statusCode: error.getStatus(),
-        code: 'REQUEST_FAILED',
-        ...details,
-      });
+      response.status(error.getStatus()).json({ statusCode: error.getStatus(), code: 'REQUEST_FAILED', ...details });
       return;
     }
     // Error contents can contain SQL, credentials, or request data.
     this.logger.error('Unexpected application request failure');
-    response.status(500).json({
-      statusCode: 500,
-      code: 'INTERNAL_ERROR',
-      message: 'Unable to complete the request. Please try again.',
-    });
+    response.status(500).json({ statusCode: 500, code: 'INTERNAL_ERROR', message: 'Unable to complete the request. Please try again.' });
   }
 }

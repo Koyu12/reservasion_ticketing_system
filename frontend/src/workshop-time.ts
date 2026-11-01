@@ -15,3 +15,22 @@ export function toWibInput(value: string) {
 export function fromWibInput(value: string) {
   return new Date(`${value}+07:00`).toISOString()
 }
+
+export function formatFilterDate(value: string) {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'UTC',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(new Date(`${value}T00:00:00Z`))
+}
+
+export function formatEventDate(
+  value: string,
+  options: Intl.DateTimeFormatOptions,
+) {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Jakarta',
+    ...options,
+  }).format(new Date(value))
+}

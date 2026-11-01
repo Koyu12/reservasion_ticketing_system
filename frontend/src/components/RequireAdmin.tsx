@@ -42,31 +42,54 @@ export function RequireAdmin({ children }: { children: ReactNode }) {
     },
   })
 
-  if (isPending) return <LoadingState />
+  if (isPending)
+    return (
+      <section className="mx-auto w-[min(1200px,calc(100%_-_32px))] py-8 desktop:py-12">
+        <LoadingState />
+      </section>
+    )
   if (sessionError)
     return (
-      <ErrorState
-        message="Unable to check your session."
-        onRetry={() => void refetch()}
-      />
+      <section className="mx-auto w-[min(1200px,calc(100%_-_32px))] py-8 desktop:py-12">
+        <ErrorState
+          message="Unable to check your session."
+          onRetry={() => void refetch()}
+        />
+      </section>
     )
   if (!session) return <Navigate to="/login" replace />
-  if (access.isPending || access.isFetching) return <LoadingState />
+  if (access.isPending || access.isFetching)
+    return (
+      <section className="mx-auto w-[min(1200px,calc(100%_-_32px))] py-8 desktop:py-12">
+        <LoadingState />
+      </section>
+    )
   if (access.isError)
     return (
-      <ErrorState
-        message="Unable to check admin access."
-        onRetry={() => void access.refetch()}
-      />
+      <section className="mx-auto w-[min(1200px,calc(100%_-_32px))] py-8 desktop:py-12">
+        <ErrorState
+          message="Unable to check admin access."
+          onRetry={() => void access.refetch()}
+        />
+      </section>
     )
   if (access.data === 'anonymous') return <Navigate to="/login" replace />
   if (access.data !== 'allowed')
     return (
-      <>
-        <h1>Access denied</h1>
-        <p>You do not have admin access.</p>
-        <Link to="/events">Browse workshops</Link>
-      </>
+      <section className="mx-auto flex w-[min(800px,calc(100%_-_32px))] flex-col items-start gap-5 py-12 desktop:py-16">
+        <h1 className="text-[28px] leading-9 font-bold desktop:text-[36px] desktop:leading-11">
+          Access denied
+        </h1>
+        <p className="text-[16px] leading-6 text-muted">
+          You do not have admin access.
+        </p>
+        <Link
+          to="/events"
+          className="inline-flex min-h-11 items-center justify-center rounded-control bg-primary px-5 text-[14px] font-semibold text-primary-ink no-underline hover:bg-primary-hover"
+        >
+          Browse workshops
+        </Link>
+      </section>
     )
   return children
 }

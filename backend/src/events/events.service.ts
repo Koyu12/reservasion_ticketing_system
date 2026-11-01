@@ -1,20 +1,24 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  NotFoundException,
-  ServiceUnavailableException,
-} from '@nestjs/common';
-import { z } from 'zod';
+import { APP_CONFIG } from '../common/config.js';
+import type { AppConfig } from '../common/config.js';
+import { BadRequestException, ConflictException, Injectable, Inject, NotFoundException } from '@nestjs/common';
+import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
+import type { Logger } from 'winston';
+import { ValidationService } from '../common/validation.service.js';
+import { EventsValidation } from './events.validation.js';
 import { Prisma } from '../generated/prisma/client.js';
-import { PrismaService } from '../prisma/prisma.service.js';
+import { PrismaService } from '../common/prisma.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import type {
   CancelEventInput,
   CreateEventInput,
   PublicEventQuery,
   UpdateEventInput,
-} from './events.schemas.js';
+  EventResponse,
+  EventListResponse,
+  PublicEventResult,
+  PublicEventListResponse,
+  PublicEventResponse,
+} from './events.validation.js';
 
 const publicSelect = {
   id: true,
@@ -29,7 +33,7 @@ const publicSelect = {
 } satisfies Prisma.EventSelect;
 type PublicEvent = Prisma.EventGetPayload<{ select: typeof publicSelect }>;
 
-function presentPublic(event: PublicEvent, now: number) {
+function presentPublic(event: PublicEvent, now: number): PublicEventResponse {
   const confirmedCount = event._count.reservationn;
   const availability =
     event.status === 'CANCELLED'
@@ -80,28 +84,34 @@ const editorSelect = {
 type EditorEvent = Prisma.EventGetPayload<{ select: typeof editorSelect }>;
 
 function present(event: EditorEvent) {
-  const { _count, ...fields } = event;
-  return { ...fields, confirmedCount: _count.reservationn };
+  return {
+    id: event.id,
+    title: event.title,
+    description: event.description,
+    venueName: event.venueName,
+    venueAddress: event.venueAddress,
+    startsAt: event.startsAt,
+    endsAt: event.endsAt,
+    registrationClosesAt: event.registrationClosesAt,
+    capacity: event.capacity,
+    status: event.status,
+    scheduleRevision: event.scheduleRevision,
+    cancelledAt: event.cancelledAt,
+    cancelledById: event.cancelledById,
+    cancellationReason: event.cancellationReason,
+    createdAt: event.createdAt,
+    updatedAt: event.updatedAt,
+    confirmedCount: event._count.reservationn,
+  };
 }
 
-function validateSchedule(event: CreateEventInput) {
+function validateSchedule(event: { startsAt: Date; endsAt: Date; registrationClosesAt: Date }) {
   const fieldErrors: { field: string; message: string }[] = [];
-  if (event.endsAt <= event.startsAt)
-    fieldErrors.push({
-      field: 'endsAt',
-      message: 'End must be after the start.',
-    });
+  if (event.endsAt <= event.startsAt) fieldErrors.push({ field: 'endsAt', message: 'End must be after the start.' });
   if (event.registrationClosesAt > event.startsAt)
-    fieldErrors.push({
-      field: 'registrationClosesAt',
-      message: 'Registration must close no later than the start.',
-    });
+    fieldErrors.push({ field: 'registrationClosesAt', message: 'Registration must close no later than the start.' });
   if (fieldErrors.length)
-    throw new BadRequestException({
-      code: 'VALIDATION_ERROR',
-      message: 'Check the highlighted fields.',
-      fieldErrors,
-    });
+    throw new BadRequestException({ code: 'VALIDATION_ERROR', message: 'Check the highlighted fields.', fieldErrors });
 }
 
 @Injectable()
@@ -109,10 +119,15 @@ export class EventsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly validationService: ValidationService,
+    @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
-  async listPublic(query: PublicEventQuery) {
-    const organizerContactEmail = this.contactEmail();
+  async listPublic(request: PublicEventQuery): Promise<PublicEventListResponse> {
+    this.logger.debug('Fetching public workshops', { context: EventsService.name });
+    const query = this.validationService.validate(EventsValidation.PUBLIC_QUERY, request);
+    const organizerContactEmail = this.config.organizerContactEmail;
     const now = Date.now();
     const startsAt: Prisma.DateTimeFilter = { gt: new Date(now) };
     if (query.from) {
@@ -122,42 +137,27 @@ export class EventsService {
     if (query.to) {
       const dayStart = new Date(`${query.to}T00:00:00+07:00`);
       startsAt.lt = new Date(dayStart.getTime() + 86400000);
-      if (startsAt.lt.getTime() <= now)
-        return { events: [], organizerContactEmail };
+      if (startsAt.lt.getTime() <= now) return { events: [], organizerContactEmail };
     }
     const events = await this.prisma.event.findMany({
       where: {
         status: 'PUBLISHED',
         startsAt,
-        ...(query.q
-          ? {
-              title: {
-                contains: query.q.replace(/[\\%_]/g, '\\$&'),
-                mode: 'insensitive',
-              },
-            }
-          : {}),
+        ...(query.q ? { title: { contains: query.q.replace(/[\\%_]/g, '\\$&'), mode: 'insensitive' } } : {}),
       },
       select: publicSelect,
       orderBy: [{ startsAt: 'asc' }, { id: 'asc' }],
     });
-    return {
-      events: events.map((event) => presentPublic(event, now)),
-      organizerContactEmail,
-    };
+    return { events: events.map((event) => presentPublic(event, now)), organizerContactEmail };
   }
 
-  async getPublic(id: string) {
-    const organizerContactEmail = this.contactEmail();
+  async getPublic(id: string): Promise<PublicEventResult> {
+    id = this.validationService.validate(EventsValidation.ID, id);
+    this.logger.debug('Fetching public workshop', { context: EventsService.name, eventId: id });
+    const organizerContactEmail = this.config.organizerContactEmail;
     const event = await this.prisma.event.findFirst({
       where: { id, status: { in: ['PUBLISHED', 'CANCELLED'] } },
-      select: {
-        ...publicSelect,
-        description: true,
-        venueAddress: true,
-        cancelledAt: true,
-        cancellationReason: true,
-      },
+      select: { ...publicSelect, description: true, venueAddress: true, cancelledAt: true, cancellationReason: true },
     });
     if (!event) throw new NotFoundException('Workshop not found.');
     return {
@@ -173,61 +173,60 @@ export class EventsService {
     };
   }
 
-  private contactEmail() {
-    const contact = z.email().safeParse(process.env.ORGANIZER_CONTACT_EMAIL);
-    if (!contact.success)
-      throw new ServiceUnavailableException(
-        'Organizer contact email is not configured. Contact the administrator.',
-      );
-    return contact.data;
-  }
-
-  async list() {
-    const organizerContactEmail = this.contactEmail();
-    const events = await this.prisma.event.findMany({
-      select: editorSelect,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-    });
+  async list(query: Record<string, never> = {}): Promise<EventListResponse> {
+    this.validationService.validate(EventsValidation.EMPTY, query);
+    this.logger.debug('Fetching admin workshops', { context: EventsService.name });
+    const organizerContactEmail = this.config.organizerContactEmail;
+    const events = await this.prisma.event.findMany({ select: editorSelect, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] });
     return { events: events.map(present), organizerContactEmail };
   }
 
-  async get(id: string) {
-    const organizerContactEmail = this.contactEmail();
-    const event = await this.prisma.event.findUnique({
-      where: { id },
-      select: editorSelect,
-    });
+  async get(id: string): Promise<EventResponse> {
+    id = this.validationService.validate(EventsValidation.ID, id);
+    this.logger.debug('Fetching admin workshop', { context: EventsService.name, eventId: id });
+    const organizerContactEmail = this.config.organizerContactEmail;
+    const event = await this.prisma.event.findUnique({ where: { id }, select: editorSelect });
     if (!event) throw new NotFoundException('Workshop not found.');
     return { event: present(event), organizerContactEmail };
   }
 
-  async create(input: CreateEventInput, actorId: string) {
-    const organizerContactEmail = this.contactEmail();
+  async create(request: CreateEventInput, actorId: string): Promise<EventResponse> {
+    this.logger.debug('Creating workshop', { context: EventsService.name });
+    const validated = this.validationService.validate(EventsValidation.CREATE, request);
+    const input = {
+      ...validated,
+      startsAt: new Date(validated.startsAt),
+      endsAt: new Date(validated.endsAt),
+      registrationClosesAt: new Date(validated.registrationClosesAt),
+    };
+    const organizerContactEmail = this.config.organizerContactEmail;
     validateSchedule(input);
-    if (input.startsAt.getTime() <= Date.now())
-      throw new ConflictException('The workshop must start in the future.');
-    const event = await this.prisma.event.create({
-      data: { ...input, createdById: actorId },
-      select: editorSelect,
-    });
+    if (input.startsAt.getTime() <= Date.now()) throw new ConflictException('The workshop must start in the future.');
+    const event = await this.prisma.event.create({ data: { ...input, createdById: actorId }, select: editorSelect });
+    this.logger.info('Workshop created', { context: EventsService.name, eventId: event.id });
     return { event: present(event), organizerContactEmail };
   }
 
-  async update(id: string, input: UpdateEventInput, actorId: string) {
-    const organizerContactEmail = this.contactEmail();
+  async update(id: string, request: UpdateEventInput, actorId: string): Promise<EventResponse> {
+    id = this.validationService.validate(EventsValidation.ID, id);
+    const validated = this.validationService.validate(EventsValidation.UPDATE, request);
+    const { startsAt, endsAt, registrationClosesAt, ...fields } = validated;
+    const input = {
+      ...fields,
+      ...(startsAt !== undefined ? { startsAt: new Date(startsAt) } : {}),
+      ...(endsAt !== undefined ? { endsAt: new Date(endsAt) } : {}),
+      ...(registrationClosesAt !== undefined ? { registrationClosesAt: new Date(registrationClosesAt) } : {}),
+    };
+    this.logger.debug('Updating workshop', { context: EventsService.name, eventId: id });
+    const organizerContactEmail = this.config.organizerContactEmail;
     const event = await this.prisma.$transaction(
       async (tx) => {
         await tx.$queryRaw`SELECT "id" FROM "Event" WHERE "id" = ${id}::uuid FOR UPDATE`;
-        const current = await tx.event.findUnique({
-          where: { id },
-          select: editorSelect,
-        });
+        const current = await tx.event.findUnique({ where: { id }, select: editorSelect });
         if (!current) throw new NotFoundException('Workshop not found.');
         const now = Date.now();
         if (current.status === 'CANCELLED' || current.startsAt.getTime() <= now)
-          throw new ConflictException(
-            'This workshop is read-only because it has started or was cancelled.',
-          );
+          throw new ConflictException('This workshop is read-only because it has started or was cancelled.');
         const { reason, ...changes } = input;
         const next = { ...current, ...changes };
         validateSchedule(next);
@@ -240,22 +239,12 @@ export class EventsService {
           throw new BadRequestException({
             code: 'VALIDATION_ERROR',
             message: 'A reason is required for schedule or venue changes.',
-            fieldErrors: [
-              {
-                field: 'reason',
-                message: 'Explain the schedule or venue change.',
-              },
-            ],
+            fieldErrors: [{ field: 'reason', message: 'Explain the schedule or venue change.' }],
           });
-        if (next.startsAt.getTime() <= now)
-          throw new ConflictException(
-            'The revised workshop must start in the future.',
-          );
+        if (next.startsAt.getTime() <= now) throw new ConflictException('The revised workshop must start in the future.');
         const confirmedCount = current._count.reservationn;
         if (next.capacity < confirmedCount)
-          throw new ConflictException(
-            `Capacity cannot be below the ${confirmedCount} confirmed reservations.`,
-          );
+          throw new ConflictException(`Capacity cannot be below the ${confirmedCount} confirmed reservations.`);
         if (significant) {
           const change = await tx.eventChange.create({
             data: {
@@ -275,64 +264,42 @@ export class EventsService {
             },
           });
           if (current.status === 'PUBLISHED') {
-            const reservations = await tx.reservation.findMany({
-              where: { eventId: id, status: 'CONFIRMED' },
-              select: { id: true },
-            });
+            const reservations = await tx.reservation.findMany({ where: { eventId: id, status: 'CONFIRMED' }, select: { id: true } });
             for (const reservation of reservations) {
-              await this.notifications.enqueue(tx, {
-                type: 'EVENT_CHANGED',
-                reservationId: reservation.id,
-                eventChangeId: change.id,
-              });
+              await this.notifications.enqueue(tx, { type: 'EVENT_CHANGED', reservationId: reservation.id, eventChangeId: change.id });
             }
           }
         }
         return tx.event.update({
           where: { id },
-          data: {
-            ...changes,
-            ...(significant
-              ? { scheduleRevision: current.scheduleRevision + 1 }
-              : {}),
-          },
+          data: { ...changes, ...(significant ? { scheduleRevision: current.scheduleRevision + 1 } : {}) },
           select: editorSelect,
         });
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
     );
+    this.logger.info('Workshop update completed', { context: EventsService.name, eventId: event.id });
     return { event: present(event), organizerContactEmail };
   }
 
-  async cancel(id: string, input: CancelEventInput, actorId: string) {
-    const organizerContactEmail = this.contactEmail();
-    const reason = input.reason.trim();
-    if (!reason)
-      throw new BadRequestException('A cancellation reason is required.');
+  async cancel(id: string, request: CancelEventInput, actorId: string): Promise<EventResponse> {
+    id = this.validationService.validate(EventsValidation.ID, id);
+    const input = this.validationService.validate(EventsValidation.CANCEL, request);
+    this.logger.debug('Cancelling workshop', { context: EventsService.name, eventId: id });
+    const organizerContactEmail = this.config.organizerContactEmail;
+    const reason = input.reason;
     const event = await this.prisma.$transaction(
       async (tx) => {
-        await tx.$queryRaw`SELECT "id" FROM "Event" WHERE "id" = ${id}::uuid FOR UPDATE`;
-        const current = await tx.event.findUnique({
-          where: { id },
-          select: editorSelect,
-        });
+        await tx.$queryRaw`SELECT "id" FROM "Event" WHERE "id" = ${id}::uuid FOR UPDATE`; // race condition prevention
+        const current = await tx.event.findUnique({ where: { id }, select: editorSelect });
         if (!current) throw new NotFoundException('Workshop not found.');
         if (current.status === 'CANCELLED') return current;
         if (current.status !== 'PUBLISHED')
-          throw new ConflictException({
-            code: 'EVENT_NOT_PUBLISHED',
-            message: 'Only published workshops can be cancelled.',
-          });
+          throw new ConflictException({ code: 'EVENT_NOT_PUBLISHED', message: 'Only published workshops can be cancelled.' });
         const now = new Date(Date.now());
         if (now >= current.endsAt)
-          throw new ConflictException({
-            code: 'EVENT_ENDED',
-            message: 'This workshop has ended and can no longer be cancelled.',
-          });
-        const reservations = await tx.reservation.findMany({
-          where: { eventId: id, status: 'CONFIRMED' },
-          select: { id: true },
-        });
+          throw new ConflictException({ code: 'EVENT_ENDED', message: 'This workshop has ended and can no longer be cancelled.' });
+        const reservations = await tx.reservation.findMany({ where: { eventId: id, status: 'CONFIRMED' }, select: { id: true } });
         await tx.reservation.updateMany({
           where: { eventId: id, status: 'CONFIRMED' },
           data: {
@@ -345,59 +312,41 @@ export class EventsService {
         });
         const cancelled = await tx.event.update({
           where: { id },
-          data: {
-            status: 'CANCELLED',
-            cancelledAt: now,
-            cancelledById: actorId,
-            cancellationReason: reason,
-          },
+          data: { status: 'CANCELLED', cancelledAt: now, cancelledById: actorId, cancellationReason: reason },
           select: editorSelect,
         });
         for (const reservation of reservations) {
-          await this.notifications.enqueue(tx, {
-            type: 'EVENT_CANCELLED',
-            reservationId: reservation.id,
-          });
+          await this.notifications.enqueue(tx, { type: 'EVENT_CANCELLED', reservationId: reservation.id });
         }
         return cancelled;
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
     );
+    this.logger.info('Workshop cancellation completed', { context: EventsService.name, eventId: event.id });
     return { event: present(event), organizerContactEmail };
   }
 
-  async publish(id: string) {
-    const organizerContactEmail = this.contactEmail();
+  async publish(id: string, body: Record<string, never>): Promise<EventResponse> {
+    id = this.validationService.validate(EventsValidation.ID, id);
+    this.validationService.validate(EventsValidation.EMPTY, body);
+    this.logger.debug('Publishing workshop', { context: EventsService.name, eventId: id });
+    const organizerContactEmail = this.config.organizerContactEmail;
     const event = await this.prisma.$transaction(
       async (tx) => {
-        await tx.$queryRaw`SELECT "id" FROM "Event" WHERE "id" = ${id}::uuid FOR UPDATE`;
-        const current = await tx.event.findUnique({
-          where: { id },
-          select: editorSelect,
-        });
+        await tx.$queryRaw`SELECT "id" FROM "Event" WHERE "id" = ${id}::uuid FOR UPDATE`; // race condition prevention
+        const current = await tx.event.findUnique({ where: { id }, select: editorSelect });
         if (!current) throw new NotFoundException('Workshop not found.');
         if (current.status === 'PUBLISHED') return current;
-        if (current.status === 'CANCELLED')
-          throw new ConflictException(
-            'Cancelled workshops cannot be published.',
-          );
+        if (current.status === 'CANCELLED') throw new ConflictException('Cancelled workshops cannot be published.');
         validateSchedule(current);
         const now = Date.now();
-        if (
-          current.startsAt.getTime() <= now ||
-          current.registrationClosesAt.getTime() <= now
-        )
-          throw new ConflictException(
-            'Publication requires a future start and open registration.',
-          );
-        return tx.event.update({
-          where: { id },
-          data: { status: 'PUBLISHED' },
-          select: editorSelect,
-        });
+        if (current.startsAt.getTime() <= now || current.registrationClosesAt.getTime() <= now)
+          throw new ConflictException('Publication requires a future start and open registration.');
+        return tx.event.update({ where: { id }, data: { status: 'PUBLISHED' }, select: editorSelect });
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
     );
+    this.logger.info('Workshop publication completed', { context: EventsService.name, eventId: event.id });
     return { event: present(event), organizerContactEmail };
   }
 }

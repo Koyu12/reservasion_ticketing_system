@@ -1,20 +1,17 @@
-import { Link, Navigate, useParams } from 'react-router'
-import { useEffect, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link, Navigate, useNavigate, useParams } from 'react-router'
+import { useQuery } from '@tanstack/react-query'
 import { ApiError, apiRequest } from '../../api'
 import { authClient } from '../../auth-client'
 import { authPath } from '../../return-to'
-import { formatWib } from '../../workshop-time'
+import { formatEventDate } from '../../workshop-time'
 import { ErrorState, LoadingState } from '../RequestState'
-import './workshops.css'
-import type {
-  ReservationDetails,
-  ReservationDetailResponse,
-} from './reservations'
+import { DateTile } from '../events/DateTile/DateTile'
+import { ShareEvent } from '../events/ShareEvent/ShareEvent'
+import type { ReservationDetailResponse } from './reservations'
 
 export function BookingConfirmation() {
   const { id } = useParams()
-  const [viewedAt] = useState(Date.now)
+  const navigate = useNavigate()
   const {
     data: session,
     isPending,
@@ -28,18 +25,15 @@ export function BookingConfirmation() {
     queryFn: async ({ signal }) => {
       const result = await apiRequest<ReservationDetailResponse>(
         `/reservations/${id}`,
-        {
-          signal,
-        },
+        { signal },
       )
       if (!result)
-        throw new Error(
-          'No reservation details were returned. Please try again.',
-        )
+        throw new Error('No reservation details were returned. Please try again.')
       return result
     },
   })
   const login = authPath('/login', `/reservations/${id}/confirmation`)
+
   if (isPending) return <LoadingState />
   if (sessionError)
     return (
@@ -52,23 +46,21 @@ export function BookingConfirmation() {
   if (query.isPending) return <LoadingState />
   if (query.error instanceof ApiError && query.error.status === 401)
     return (
-      <div>
-        <p>Your session has expired. Sign in again to view your reservation.</p>
-        <button type="button" onClick={() => void refetch()}>
-          Sign in again
-        </button>
-      </div>
+      <section className="mx-auto flex w-[min(560px,calc(100%_-_32px))] flex-col gap-5 py-8 desktop:py-14">
+        <p className="text-muted">Your session has expired. Sign in again to view your reservation.</p>
+        <Link to={login} onClick={(event) => { event.preventDefault(); void refetch().then(() => navigate(login)).catch(() => undefined) }} className="inline-flex min-h-11 items-center text-accent underline-offset-4 hover:underline">Sign in again</Link>
+      </section>
     )
   if (
     query.error instanceof ApiError &&
     [400, 404].includes(query.error.status)
   )
     return (
-      <article className="public-workshops">
-        <h1>Reservation not found</h1>
-        <p>This reservation is unavailable for your account.</p>
-        <Link to="/events">Browse workshops</Link>
-      </article>
+      <section className="mx-auto flex w-[min(560px,calc(100%_-_32px))] flex-col gap-5 py-8 desktop:py-14">
+        <h1 className="text-[28px] leading-9 font-bold desktop:text-[36px] desktop:leading-11">Reservation not found</h1>
+        <p className="text-muted">This reservation is unavailable for your account.</p>
+        <Link to="/events" className="inline-flex min-h-11 items-center text-accent underline-offset-4 hover:underline">Browse workshops</Link>
+      </section>
     )
   if (query.isError)
     return (
@@ -77,256 +69,55 @@ export function BookingConfirmation() {
         onRetry={() => void query.refetch()}
       />
     )
-  const { reservation, organizerContactEmail } = query.data
+
+  const { reservation } = query.data
   const { event } = reservation
-  const cancelled =
-    reservation.status === 'CANCELLED' || event.status === 'CANCELLED'
+  if (reservation.status !== 'CONFIRMED' || event.status === 'CANCELLED')
+    return <Navigate to={`/reservations/${reservation.id}`} replace />
+
+  const dateOptions = { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' } as const
+  const timeOptions = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' } as const
+  const multipleDays = formatEventDate(event.startsAt, { dateStyle: 'short' }) !== formatEventDate(event.endsAt, { dateStyle: 'short' })
 
   return (
-    <article className="public-workshops booking-confirmation">
-      <h1>
-        {cancelled ? 'Your reservation is cancelled' : 'Your place is reserved'}
-      </h1>
-      <p>
-        {cancelled
-          ? 'This booking no longer reserves a place.'
-          : 'Your booking is confirmed. Keep this reference for your records.'}
-      </p>
-      {reservation.cancelledAt && (
-        <p role="status">
-          Cancelled on{' '}
-          <time dateTime={reservation.cancelledAt}>
-            {formatWib(reservation.cancelledAt)}
-          </time>
-          .
-        </p>
-      )}
-      <div className="booking-reference">
-        <span>Booking reference</span>
-        <strong>{reservation.bookingReference}</strong>
-      </div>
-      <h2>{event.title}</h2>
-      {event.status === 'CANCELLED' && (
-        <div>
-          <p role="status">This workshop has been cancelled.</p>
-          {event.cancelledAt && (
-            <p>
-              Workshop cancelled on{' '}
-              <time dateTime={event.cancelledAt}>
-                {formatWib(event.cancelledAt)}
-              </time>
-              .
+    <main className="mx-auto flex w-[min(560px,calc(100%_-_32px))] flex-col gap-6 pt-8 pb-10 desktop:pt-14 desktop:pb-16">
+      <header className="flex flex-col items-center gap-3 text-center">
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-success" aria-hidden="true">
+          <path d="m9 12 2 2 4-4" />
+          <circle cx="12" cy="12" r="10" />
+        </svg>
+        <h1 className="text-[28px] leading-9 font-bold desktop:text-[36px] desktop:leading-11">You’re booked!</h1>
+        <p className="text-[16px] leading-6 text-muted">Your place is confirmed.</p>
+      </header>
+
+      <section aria-label="Confirmed reservation" className="overflow-hidden rounded-control border border-solid border-line bg-surface">
+        <div className="flex flex-col gap-1.5 border-0 border-b border-solid border-line px-6 py-4">
+          <p className="text-[12px] leading-[15px] font-medium text-muted">Booking reference</p>
+          <strong className="text-[18px] leading-6 font-semibold break-all">{reservation.bookingReference}</strong>
+        </div>
+        <div className="flex items-start gap-4 p-5 desktop:gap-5 desktop:p-6 [&_.discovery-date>span:last-child]:hidden">
+          <div className="shrink-0"><DateTile dateTime={event.startsAt} /></div>
+          <div className="flex min-w-0 flex-1 flex-col gap-2.5">
+            <h2 className="text-[20px] leading-7 font-semibold wrap-break-word">{event.title}</h2>
+            <p className="text-[14px] leading-[21px] font-medium">
+              <time dateTime={event.startsAt}>{formatEventDate(event.startsAt, dateOptions)}</time>
+              <br />
+              <time dateTime={event.startsAt}>{formatEventDate(event.startsAt, timeOptions)}</time>
+              {'–'}
+              <time dateTime={event.endsAt}>{multipleDays && `${formatEventDate(event.endsAt, dateOptions)} · `}{formatEventDate(event.endsAt, timeOptions)}</time>
+              {' WIB'}
             </p>
-          )}
-          <p className="workshop-description">
-            Reason: {event.cancellationReason}
-          </p>
+            <p className="text-[14px] leading-[21px] text-muted wrap-break-word">{event.venueName}</p>
+          </div>
         </div>
-      )}
-      {reservation.affectedByChange && (
-        <p role="status">
-          The schedule or venue has changed since you booked. The current
-          details are shown below.
-        </p>
-      )}
-      <dl className="workshop-facts">
-        <div>
-          <dt>Start</dt>
-          <dd>
-            <time dateTime={event.startsAt}>{formatWib(event.startsAt)}</time>
-          </dd>
-        </div>
-        <div>
-          <dt>End</dt>
-          <dd>
-            <time dateTime={event.endsAt}>{formatWib(event.endsAt)}</time>
-          </dd>
-        </div>
-        <div>
-          <dt>Venue</dt>
-          <dd>{event.venueName}</dd>
-        </div>
-        <div>
-          <dt>Address</dt>
-          <dd className="workshop-description">{event.venueAddress}</dd>
-        </div>
-        <div>
-          <dt>Registration deadline</dt>
-          <dd>
-            <time dateTime={event.registrationClosesAt}>
-              {formatWib(event.registrationClosesAt)}
-            </time>
-          </dd>
-        </div>
-        <div>
-          <dt>Cancellation deadline</dt>
-          <dd>
-            <time dateTime={reservation.cancellationClosesAt}>
-              {formatWib(reservation.cancellationClosesAt)}
-            </time>
-          </dd>
-        </div>
-      </dl>
-      <h2>
-        {cancelled ? 'Questions about your booking?' : 'Before your workshop'}
-      </h2>
-      {!cancelled && (
-        <p>
-          {reservation.affectedByChange
-            ? 'Because the schedule or venue changed after you booked, you may cancel before the revised start time.'
-            : 'The standard cancellation policy allows cancellation more than 24 hours before the workshop starts.'}
-        </p>
-      )}
-      {!cancelled && (
-        <CancellationAction
-          key={`${session.user.id}:${reservation.id}`}
-          reservation={reservation}
-          userId={session.user.id}
-        />
-      )}
-      {reservation.status === 'CANCELLED' &&
-        event.status === 'PUBLISHED' &&
-        viewedAt < new Date(event.startsAt).getTime() && (
-          <p>
-            <Link to={`/events/${event.id}`}>
-              Check availability and book again
-            </Link>
-            . A new booking receives a new reference and follows the current
-            booking and cancellation rules.
-          </p>
-        )}
-      <p>
-        For questions or late cancellation requests, email{' '}
-        <a href={`mailto:${organizerContactEmail}`}>{organizerContactEmail}</a>{' '}
-        and include your booking reference.
-      </p>
-      <p>
-        You can bookmark this page and return while signed in to this account.
-      </p>
-      <p>
-        <Link to="/reservations">My reservations</Link>
-        {' · '}
-        <Link to={`/events/${event.id}`}>View workshop</Link>
-        {' · '}
-        <Link to="/events">Browse workshops</Link>
-      </p>
-    </article>
-  )
-}
+      </section>
 
-function CancellationAction({
-  reservation,
-  userId,
-}: {
-  reservation: ReservationDetails
-  userId: string
-}) {
-  const client = useQueryClient()
-  const [confirming, setConfirming] = useState(false)
-  const [now, setNow] = useState(Date.now)
-  const deadline = new Date(reservation.cancellationClosesAt).getTime()
-  useEffect(() => {
-    if (now >= deadline) return
-    const delay = Math.min(Math.max(deadline - Date.now(), 1), 2147483647)
-    const timer = window.setTimeout(() => setNow(Date.now()), delay)
-    return () => window.clearTimeout(timer)
-  }, [deadline, now])
-
-  const cancellation = useMutation({
-    mutationFn: async () => {
-      const result = await apiRequest<{
-        reservation: Pick<ReservationDetails, 'id' | 'status' | 'cancelledAt'>
-      }>(`/reservations/${reservation.id}/cancel`, {
-        method: 'POST',
-        body: JSON.stringify({}),
-      })
-      if (!result)
-        throw new Error(
-          'Unable to confirm cancellation. Check your reservation before trying again.',
-        )
-      return result
-    },
-    onSettled: async () => {
-      setConfirming(false)
-      await Promise.all([
-        client.invalidateQueries({ queryKey: ['admin-attendees'] }),
-        client.invalidateQueries({
-          queryKey: ['reservation', userId, reservation.id],
-        }),
-        client.invalidateQueries({ queryKey: ['reservations', userId] }),
-        client.invalidateQueries({
-          queryKey: ['public-event', reservation.eventId],
-        }),
-        client.invalidateQueries({ queryKey: ['public-events'] }),
-        client.invalidateQueries({
-          queryKey: ['admin-event', reservation.eventId],
-        }),
-        client.invalidateQueries({ queryKey: ['admin-events'] }),
-      ])
-    },
-  })
-  const closed =
-    now >= deadline ||
-    (cancellation.error instanceof ApiError &&
-      cancellation.error.code === 'CANCELLATION_CLOSED')
-
-  return (
-    <section aria-label="Cancel reservation">
-      {cancellation.error && (
-        <ErrorState message={cancellation.error.message} />
-      )}
-      {cancellation.error instanceof ApiError &&
-        cancellation.error.status === 401 && (
-          <p>
-            <Link
-              to={authPath(
-                '/login',
-                `/reservations/${reservation.id}/confirmation`,
-              )}
-            >
-              Sign in again
-            </Link>{' '}
-            to manage your reservation.
-          </p>
-        )}
-      {closed ? (
-        <p>
-          Self-service cancellation has closed. Contact the organizer below and
-          include your booking reference.
-        </p>
-      ) : confirming ? (
-        <>
-          <p>
-            Cancel this reservation? Your place will be released. Booking again
-            depends on availability and the registration deadline.
-          </p>
-          <button
-            type="button"
-            disabled={cancellation.isPending}
-            onClick={() => setConfirming(false)}
-          >
-            Keep reservation
-          </button>{' '}
-          <button
-            type="button"
-            disabled={cancellation.isPending}
-            onClick={() => cancellation.mutate()}
-          >
-            Confirm cancellation
-          </button>
-        </>
-      ) : (
-        <button
-          type="button"
-          disabled={cancellation.isPending}
-          onClick={() => setConfirming(true)}
-        >
-          Cancel reservation
-        </button>
-      )}
-      {cancellation.isPending && (
-        <p role="status">Cancelling your reservation. Please wait.</p>
-      )}
-    </section>
+      <div className="flex flex-col gap-3 desktop:flex-row desktop:[&>button]:w-[168px] [&>button]:h-12">
+        <Link to={`/reservations/${reservation.id}`} className="inline-flex min-h-12 flex-1 items-center justify-center rounded-control bg-primary px-[18px] text-[14px] font-semibold text-primary-ink no-underline hover:bg-primary-hover">View My Reservation</Link>
+        <ShareEvent id={event.id} title={event.title} />
+      </div>
+      <p className="text-center text-[14px] leading-[21px] text-muted">Find your booking details and cancellation deadline in your reservation.</p>
+      <Link to="/events" className="inline-flex min-h-11 items-center justify-center text-[14px] font-medium text-accent underline-offset-4 hover:underline">Explore more events</Link>
+    </main>
   )
 }

@@ -2,7 +2,10 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { authClient } from '../auth-client'
-import { ErrorState } from './RequestState'
+import { AuthLayout } from './layout/AuthLayout/AuthLayout'
+import { PasswordInput } from './ui/Input/Input'
+import { Button } from './ui/Button/Button'
+import { Alert } from './ui/Alert/Alert'
 
 export function ResetPassword() {
   const [params, setParams] = useSearchParams()
@@ -10,7 +13,6 @@ export function ResetPassword() {
   const token = params.get('token')
   const [pending, setPending] = useState(false)
   const [complete, setComplete] = useState(false)
-  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -47,77 +49,60 @@ export function ResetPassword() {
 
   if (complete)
     return (
-      <>
-        <h1>Password reset</h1>
-        <p role="status">
-          Your password has been reset and all previous sessions have been
-          signed out.
+      <AuthLayout title="Password updated" description="Your password has been updated. Log in with your new password to continue." className="desktop:pt-20">
+        <p role="status" className="text-[14px] leading-[21px] text-muted">
+          All previous sessions have been signed out.
         </p>
-        <Link to="/login">Sign in with your new password</Link>
-      </>
+        <Link to="/login" className="inline-flex min-h-12 items-center justify-center rounded-control bg-primary px-5 text-[14px] font-semibold text-primary-ink hover:bg-primary-hover">Log in</Link>
+        <Link to="/events" className="inline-flex min-h-11 items-center justify-center text-[14px] font-semibold text-accent hover:underline">Explore events</Link>
+      </AuthLayout>
     )
 
   if (!token || params.has('error'))
     return (
-      <>
-        <h1>Reset password</h1>
-        <ErrorState message="This reset link is missing, invalid, expired, or already used." />
-        <Link to="/forgot-password">Request a new reset link</Link>
-      </>
+      <AuthLayout title="Reset link unavailable" description="This link is invalid, expired or already used. Request a new reset link to continue." className="desktop:pt-20">
+        <Link to="/forgot-password" className="inline-flex min-h-12 items-center justify-center rounded-control bg-primary px-5 text-[14px] font-semibold text-primary-ink hover:bg-primary-hover">Request new reset link</Link>
+        <Link to="/login" className="inline-flex min-h-11 items-center justify-center text-[14px] font-semibold text-accent hover:underline">Back to login</Link>
+      </AuthLayout>
     )
 
   return (
-    <>
-      <h1>Reset password</h1>
-      <p id="reset-password-help">
-        Use between 8 and 128 characters. Resetting signs out all existing
-        sessions.
-      </p>
-      {error && <ErrorState message={error} />}
+    <AuthLayout title="Set a new password" description="Choose a strong, unique password for your account." className="desktop:pt-20">
+      {error && <Alert kind="error">{error}</Alert>}
       <form onSubmit={(event) => void submit(event)} aria-busy={pending}>
-        <fieldset disabled={pending}>
-          <p>
-            <label htmlFor="new-password">New password</label>
-            <br />
-            <input
+        <fieldset disabled={pending} className="m-0 flex min-w-0 flex-col gap-5 border-0 p-0">
+            <PasswordInput
+              label="New password"
               id="new-password"
               name="newPassword"
-              type={showPassword ? 'text' : 'password'}
+              placeholder="Create a new password"
               autoComplete="new-password"
               minLength={8}
               maxLength={128}
-              aria-describedby="reset-password-help"
+              help="Use a strong, unique password. Use between 8 and 128 characters."
+              disabled={pending}
               required
             />
-          </p>
-          <p>
-            <label htmlFor="confirm-password">Confirm new password</label>
-            <br />
-            <input
+            <PasswordInput
+              label="Confirm new password"
               id="confirm-password"
               name="confirmation"
-              type={showPassword ? 'text' : 'password'}
+              placeholder="Confirm your new password"
               autoComplete="new-password"
               minLength={8}
               maxLength={128}
+              disabled={pending}
+              error={error === 'Passwords do not match.' ? error : undefined}
               required
             />
-            <button
-              type="button"
-              aria-pressed={showPassword}
-              onClick={() => setShowPassword((visible) => !visible)}
-            >
-              {showPassword ? 'Hide passwords' : 'Show passwords'}
-            </button>
-          </p>
-          <button type="submit">
+          <Button type="submit" className="h-12 w-full">
             {pending ? 'Resetting password…' : 'Reset password'}
-          </button>
+          </Button>
         </fieldset>
       </form>
-      <p>
-        <Link to="/forgot-password">Request a new reset link</Link>
-      </p>
-    </>
+      <p className="text-[12px] leading-[18px] text-muted">Resetting your password signs out all existing sessions.</p>
+      <Link to="/login" className="inline-flex min-h-11 items-center justify-center text-[14px] font-semibold text-accent hover:underline">Back to login</Link>
+      <Link to="/forgot-password" className="inline-flex min-h-11 items-center justify-center text-[13px] text-muted hover:text-ink hover:underline">Request a new reset link</Link>
+    </AuthLayout>
   )
 }

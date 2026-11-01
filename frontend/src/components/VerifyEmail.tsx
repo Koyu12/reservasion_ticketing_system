@@ -3,6 +3,9 @@ import { Link, Navigate, useSearchParams } from 'react-router'
 import { authClient } from '../auth-client'
 import { ErrorState, LoadingState } from './RequestState'
 import { authPath, safeReturnTo } from '../return-to'
+import { AuthLayout } from './layout/AuthLayout/AuthLayout'
+import { Button } from './ui/Button/Button'
+import { Alert } from './ui/Alert/Alert'
 
 export function VerifyEmail() {
   const {
@@ -68,70 +71,83 @@ export function VerifyEmail() {
     }
   }
 
-  if (isPending) return <LoadingState />
+  if (isPending)
+    return (
+      <AuthLayout title="Verify your email" className="desktop:pt-20">
+        <LoadingState />
+      </AuthLayout>
+    )
   if (sessionError)
     return (
-      <ErrorState
-        message="Unable to check your session."
-        onRetry={() => void refetch()}
-      />
+      <AuthLayout title="Verify your email" className="desktop:pt-20">
+        <ErrorState
+          message="Unable to check your session."
+          onRetry={() => void refetch()}
+        />
+      </AuthLayout>
     )
 
   if (session?.user.emailVerified && returnTo !== '/events')
     return <Navigate to={returnTo} replace />
 
+  const verified = Boolean(session?.user.emailVerified)
+  const title = verified
+    ? 'Email verified'
+    : linkError
+      ? 'Verification link unavailable'
+      : 'Verify your email'
+  const description = verified
+    ? 'Your email is verified. You can book workshops when registration is available.'
+    : linkError
+      ? 'This link is invalid, expired or already used. Request another verification email to continue.'
+      : `Open the verification link in your email${session ? ` for ${session.user.email}` : ''}. Email verification is required before booking.`
+
   return (
-    <>
-      <h1>Verify your email</h1>
-      {session?.user.emailVerified ? (
+    <AuthLayout title={title} description={description} className="desktop:pt-20">
+      {verified ? (
         <>
-          <p role="status">
-            Your email is verified. You can book workshops when registration is
-            available.
-          </p>
-          <Link to="/events">Browse workshops</Link>
+          <p role="status" className="sr-only">Your email is verified.</p>
+          <Link to="/events" className="inline-flex min-h-12 items-center justify-center rounded-control bg-primary px-5 text-[14px] font-semibold text-primary-ink hover:bg-primary-hover">Explore events</Link>
         </>
       ) : (
         <>
-          {linkError && <ErrorState message={linkError} />}
+          {linkError && <Alert kind="error">{linkError}</Alert>}
           {session ? (
             <>
-              <p>
-                Check the inbox for {session.user.email} for a verification
-                link. Links expire after one hour.
+              <p className="text-[14px] leading-[21px] text-muted">
+                Check your inbox and spam folder. Links expire after one hour.
               </p>
-              <p>
-                You can browse workshops while unverified. Verify your email
-                before booking.
-              </p>
-              {notice && <p role="status">{notice}</p>}
-              {error && <ErrorState message={error} />}
-              <button
-                type="button"
-                disabled={requesting || checking}
-                onClick={() => void resend()}
-              >
-                {requesting ? 'Requesting email…' : 'Resend verification email'}
-              </button>{' '}
-              <button
-                type="button"
-                disabled={requesting || checking}
-                onClick={() => void checkStatus()}
-              >
-                {checking ? 'Checking…' : 'Check verification status'}
-              </button>
+              {notice && <Alert kind="success">{notice}</Alert>}
+              {error && <Alert kind="error">{error}</Alert>}
+              <div className="flex flex-col gap-3" aria-busy={requesting || checking}>
+                <Button
+                  className="h-12 w-full"
+                  disabled={requesting || checking}
+                  onClick={() => void resend()}
+                >
+                  {requesting ? 'Requesting email…' : 'Resend verification email'}
+                </Button>
+                <Button
+                  variant="secondary"
+                  className="h-12 w-full"
+                  disabled={requesting || checking}
+                  onClick={() => void checkStatus()}
+                >
+                  {checking ? 'Checking…' : 'Check verification status'}
+                </Button>
+              </div>
             </>
           ) : (
-            <p>
-              <Link to={authPath('/login', returnTo)}>Sign in</Link> to check
-              your verification status or request a new link.
-            </p>
+            <>
+              <p className="text-[14px] leading-[21px] text-muted">Log in to check your verification status or request a new link.</p>
+              <Button className="h-12 w-full" disabled>Resend verification email</Button>
+            </>
           )}
-          <p>
-            <Link to="/events">Continue browsing</Link>
-          </p>
+          <Link to={authPath('/login', returnTo)} className="inline-flex min-h-11 items-center justify-center text-[14px] font-semibold text-accent hover:underline">Back to login</Link>
+          <Link to="/events" className="inline-flex min-h-11 items-center justify-center text-[14px] font-medium text-muted hover:text-ink hover:underline">Continue browsing</Link>
         </>
       )}
-    </>
+      <p className="text-[12px] leading-[18px] text-muted">Verifying your email doesn’t reserve a place.</p>
+    </AuthLayout>
   )
 }
